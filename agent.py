@@ -75,6 +75,9 @@ async def entrypoint(ctx: JobContext):
     temperature = 0.7
 
     outbound_details= metadata.get("outbound_details")
+    outbound_call_context = outbound_details.get("outbound_call_context")
+    if outbound_call_context is not None:
+        user_instructions += f" The call context is : {outbound_call_context}"
     logging.info(f"outbound_details: {outbound_details}")
 
 #####################TOOLS######################
@@ -143,8 +146,6 @@ async def entrypoint(ctx: JobContext):
     # )
     # tools.append(tool)
 
-
-
     if outbound_details.get("meeting_id") is not None:
         tool= function_tool(
             mute_unmute,
@@ -161,6 +162,12 @@ async def entrypoint(ctx: JobContext):
 
     session = AgentSession(
         vad=ctx.proc.userdata["vad"],
+        tts= openai.tts.TTS(
+            api_key= os.getenv("OPENAI_API_KEY"),
+            voice="coral",
+            instructions=f"Be a lot more expressive",
+            model= "gpt-4o-mini-tts"
+        ),
         llm=openai.realtime.RealtimeModel(
             api_key=os.getenv("OPENAI_API_KEY"),
             model= "gpt-4o-mini-realtime-preview",
