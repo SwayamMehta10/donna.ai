@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 ICS_URL = os.getenv("CANVAS_ICS_URL")   # put your feed URL here in a .env file
-LOCAL_TZ = tz.gettz("America/Los_Angeles")  # change if you prefer another timezone
+LOCAL_TZ = tz.gettz("America/Phenoix")  # change if you prefer another timezone
 
 if not ICS_URL:
     print("Set CANVAS_ICS_URL in a .env file (CANVAS_ICS_URL='https://...')"); exit(1)

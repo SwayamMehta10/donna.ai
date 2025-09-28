@@ -9,7 +9,6 @@ from livekit.agents import (
 from livekit.agents import FunctionTool
 import sys
 
-
 class MyAgent(Agent):
     
     def __init__(self, user_instructions: str, tools: list[FunctionTool]) -> None:
