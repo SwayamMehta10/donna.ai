@@ -3,6 +3,7 @@ from google_auth import authenticate_google
 from googleapiclient.errors import HttpError
 from datetime import datetime, timedelta
 import pytz
+from mylogger import logging
 
 def google_calender(service, calendar_id='primary', time_min=None, time_max=None, max_results=20):
     """Fetch upcoming events from the calendar with debugging."""

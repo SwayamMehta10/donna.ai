@@ -1,0 +1,193 @@
+{
+  "items": [
+    {
+      "id": "item_CKjDCiBTUsevldtw9pYcK",
+      "type": "message",
+      "role": "user",
+      "content": [
+        "Halo"
+      ],
+      "interrupted": false
+    },
+    {
+      "id": "item_CKjDDk2A277AUMrFFMqiA",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        "Hello! How can I assist you today?"
+      ],
+      "interrupted": false
+    },
+    {
+      "id": "item_CKjDGPaoI7CCuB48egMVu",
+      "type": "message",
+      "role": "user",
+      "content": [
+        "\u0939\u0948\u0932\u094b, \u0939\u093e\u092f, \u0939\u093e\u0909 \u0906\u0930 \u092f\u0942 \u0921\u0942\u0907\u0902\u0917?"
+      ],
+      "interrupted": false
+    },
+    {
+      "id": "item_CKjDJ3CD8rKCRl9fALNWM",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        "I'm doing great, thank you! How about you?"
+      ],
+      "interrupted": false
+    },
+    {
+      "id": "item_CKjDMsaFjkXXiNfBb2IQb",
+      "type": "message",
+      "role": "user",
+      "content": [
+        "\u0628\u0627\u062a \u06a9\u0631 \u06cc\u0627\u0631"
+      ],
+      "interrupted": false
+    },
+    {
+      "id": "item_CKjDOCr8edZzH5xDbVrZm",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        "Bilkul, aap se baat karne mein mujhe bohot khushi ho rahi hai. Aapko kis baare"
+      ],
+      "interrupted": true
+    },
+    {
+      "id": "item_CKjDTtY8m0xKV1B6UXkS2",
+      "type": "message",
+      "role": "user",
+      "content": [
+        "K\u00fcmegi latkarawich."
+      ],
+      "interrupted": false
+    },
+    {
+      "id": "item_CKjDV1xnZxkkOxpNuhbaW",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        "Aap se baat karke accha laga. Kya aapko kisi aur cheez mein madad chahiye?"
+      ],
+      "interrupted": false
+    },
+    {
+      "id": "item_CKjDeIPKcbh9s9itBkJKB",
+      "type": "message",
+      "role": "user",
+      "content": [
+        "\u06cc\u06c1\u0627\u06ba \u0633\u06d2 \u067e\u0631\u062f\u06c1\u06d4"
+      ],
+      "interrupted": false
+    },
+    {
+      "id": "item_CKjDhymKKTnOqd3jXILdS",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        "Aapki madad karne ke liye bohot dhanyavaad. Aap apni zaroorat ke liye koi bhi sawal pooch sakte hain. Aapko koi"
+      ],
+      "interrupted": true
+    },
+    {
+      "id": "item_CKjDqLpA3R2lnvcdGo3LW",
+      "type": "message",
+      "role": "user",
+      "content": [
+        "Olanikuto\u0648\u0644\u062a."
+      ],
+      "interrupted": false
+    },
+    {
+      "id": "item_CKjDruiX4mjr2ToAsYF2D",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        "Zaroor! Aapne kisi khaas tareekh aur waqt ka socha hai? Main"
+      ],
+      "interrupted": true
+    },
+    {
+      "id": "item_CKjDvGW6aCA88M4nQNSLt",
+      "type": "message",
+      "role": "user",
+      "content": [
+        "\u0627\u0633\u0646\u06cc \u0628\u06be\u06cc \u06a9\u06cc\u0627 \u0628\u062a\u0627\u0626\u06d2\u061f"
+      ],
+      "interrupted": false
+    },
+    {
+      "id": "item_CKjDxRVTmwfMw0Dm6PLVM",
+      "type": "message",
+      "role": "user",
+      "content": [
+        "Hello."
+      ],
+      "interrupted": false
+    },
+    {
+      "id": "item_CKjDyq9EIysA3Iaqg2BXn",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        "Hello! How can I help you today?"
+      ],
+      "interrupted": false
+    },
+    {
+      "id": "item_CKjE2IB1vGwzZBYxo6g8B",
+      "type": "message",
+      "role": "user",
+      "content": [
+        "So please give me my schedule for today."
+      ],
+      "interrupted": false
+    },
+    {
+      "id": "item_CKjEBSr5xVVjmGIp0pwEx",
+      "type": "message",
+      "role": "user",
+      "content": [
+        "\u0622\u067e \u0646\u06d2 \u06c1\u0644\u06a9\u0627 \u0686\u06be\u0648\u0691\u06d2 \u062a\u0648 \u0628\u0648\u0644\u06cc \u0648\u0646\u06af\u0644\u0634 \u0645\u06cc\u06ba."
+      ],
+      "interrupted": false
+    },
+    {
+      "id": "item_CKjEEn3b5imcDHs47pv7K",
+      "type": "message",
+      "role": "user",
+      "content": [
+        "Hello"
+      ],
+      "interrupted": false
+    },
+    {
+      "id": "item_CKjEFgVG3pcn9GDtuTN6W",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        "Hello! How can I assist you?"
+      ],
+      "interrupted": false
+    },
+    {
+      "id": "item_CKjEKuP3mHg5UI1D990qf",
+      "type": "message",
+      "role": "user",
+      "content": [
+        "What's my schedule today?"
+      ],
+      "interrupted": false
+    },
+    {
+      "id": "item_CKjELwkUU5oi4XD5Sv1Ow",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        "Sure, I'll check your schedule for today. One moment, please."
+      ],
+      "interrupted": false
+    }
+  ]
+}
