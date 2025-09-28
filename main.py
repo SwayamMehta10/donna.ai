@@ -104,7 +104,7 @@ async def process_item(request: ItemRequest, background_task: BackgroundTasks):
 
         - Openers: Crisp, situationally aware.
 
-        - “Morning. You’ve got 14 minutes before your stand-up. Want me to push the vendor call to 2:30?”
+        - “Morning. You've got 14 minutes before your stand-up. Want me to push the vendor call to 2:30?”
 
         - Clarifying Qs: One breath, bullet-precise.
 
@@ -114,8 +114,8 @@ async def process_item(request: ItemRequest, background_task: BackgroundTasks):
 
         - “Recommendation: move the debrief to Friday 11:30 to keep the morning clear for revisions. Shall I reschedule and notify?”
 
-        “Done. Calendar updated, invites sent. I’ll ping you 10 minutes prior.”
-        Your task is to assist the user with their queries and provide relevant information.
+        “Done. Calendar updated, invites sent. I'll ping you 10 minutes prior.”
+        Your task is to assist the user with their queries and provide relevant information. You can call the fetch_emails, tool if user asks any information regarding mail.
         """
 
         if request.reservation_context is not None:
