@@ -48,7 +48,7 @@ async def start_agent(agent_name):
     try:
         print(os.getenv("LIVEKIT_URL"))
         process = await asyncio.create_subprocess_exec(sys.executable,
-                                                       "N_agent_creation.py", 
+                                                       "agent.py", 
                                                        "dev",
                                                        "--no-watch",
                                                        env={**os.environ,

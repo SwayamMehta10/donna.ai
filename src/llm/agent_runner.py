@@ -66,20 +66,22 @@ class AIVoiceAgent:
             result = await self.app.ainvoke(self.state, config=config)
             self.state.update(result)
             
-            # Print status update to console
-            email_count = len(self.state.get("emails", []))
-            calendar_count = len(self.state.get("calendar_events", []))
-            conflicts = len(self.state.get("conflicts", []))
-            important_items = len(self.state.get("important_items", []))
+            # Get summary values from the state
+            summary = self.state.get("summary", {})
+            email_count = summary.get("total_emails", 0)
+            calendar_count = summary.get("total_calendar_events", 0)
             
             print(f"\n✅ Processing Complete:")
             print(f"  📧 Emails processed: {email_count}")
             print(f"  📅 Calendar events: {calendar_count}")
-            print(f"  ⚠️  Conflicts detected: {conflicts}")
-            print(f"  🚨 Important items: {important_items}")
             
-            # Set monitoring_active to False to indicate we're done
-            self.state["monitoring_active"] = False
+            # Print additional info if available
+            if "today_events" in summary:
+                print(f"  � Today's events: {summary['today_events']}")
+            if "conflicts" in summary and summary["conflicts"]:
+                print(f"  ⚠️  Conflicts detected: {len(summary['conflicts'])}")
+            if "important_items" in summary:
+                print(f"  🚨 Important items: {len(summary['important_items'])}")
             
         except Exception as e:
             logger.error(f"Error in workflow execution: {e}")
@@ -92,7 +94,6 @@ class AIVoiceAgent:
         """Stop the agent gracefully"""
         logger.info("Stopping AI Voice Agent...")
         self.running = False
-        self.state["monitoring_active"] = False
         
         # Save final state
         await self._save_state()
@@ -115,23 +116,16 @@ class AIVoiceAgent:
     
     def get_status(self) -> Dict[str, Any]:
         """Get current agent status"""
+        summary = self.state.get("summary", {})
+        
         return {
             "running": self.running,
             "current_step": self.state.get("current_step"),
             "last_check": self.state.get("last_check"),
             "error_count": self.state.get("error_count", 0),
-            "pending_interactions": len([
-                i for i in self.state.get("user_interactions", [])
-                if i["status"] == "pending"
-            ]),
-            "pending_actions": len([
-                a for a in self.state.get("pending_actions", [])
-                if a["status"] == "pending"
-            ]),
-            "active_conflicts": len([
-                c for c in self.state.get("conflicts", [])
-                if c["severity"] in ["high", "critical"]
-            ])
+            "total_emails": summary.get("total_emails", 0),
+            "total_calendar_events": summary.get("total_calendar_events", 0),
+            "today_events": summary.get("today_events", 0)
         }
     
     async def force_check(self):
