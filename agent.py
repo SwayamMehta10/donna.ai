@@ -133,7 +133,7 @@ async def entrypoint(ctx: JobContext):
         )
 
         tool= function_tool(
-            voicemail,
+            fetch_emails,
             name= "fetch_emails",
             description= """
                 Called when users asks anything regarding emails..
