@@ -42,6 +42,7 @@ class ItemRequest(BaseModel):
     call_context: Optional[str] = None
     meeting_id: Optional[str] = None
     meeting_password: Optional[str] = None
+    reservation_context: Optional[str] = None
 
 
 async def start_agent(agent_name):
@@ -91,12 +92,6 @@ async def process_item(request: ItemRequest, background_task: BackgroundTasks):
         return response
 
     try:            
-        outbound_details={
-            "outbound_call_id": request.call_id,
-            "outbound_name": request.name,
-            "outbound_number": request.callee_number,
-            "outbound_call_context": request.call_context,
-        }
         user_instructions= f"""
         You are {bot_name} a personal assistant of {name}. Your task is to assist the user with their queries and provide relevant information.
 
@@ -122,6 +117,17 @@ async def process_item(request: ItemRequest, background_task: BackgroundTasks):
         “Done. Calendar updated, invites sent. I’ll ping you 10 minutes prior.”
         Your task is to assist the user with their queries and provide relevant information.
         """
+
+        if request.reservation_context is not None:
+            request.call_context= request.reservation_context
+            user_instructions = f"""You are calling on behalf of {name}"""
+        outbound_details={
+            "outbound_call_id": request.call_id,
+            "outbound_name": request.name,
+            "outbound_number": request.callee_number,
+            "outbound_call_context": request.call_context,
+        }
+
         # Create one full user config
         full_user_config = {
                 "instructions": user_instructions,

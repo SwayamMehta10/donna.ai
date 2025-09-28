@@ -6,3 +6,5 @@ __pycache__
 logs
 venv
 temp/
+.venv/
+KMS/
