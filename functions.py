@@ -1,10 +1,6 @@
 from mylogger import logging
-from services.gmail import GmailAPI
-from services.calendar import CalendarAPI
-from services import model
-from services import notification
-from services import conflict_detector
-from services import scheduler
+from src.services.gmail import GmailAPI
+from src.services.calendar import CalendarAPI
 from datetime import datetime, timedelta
 from typing import TypedDict, Optional
 class EmailData(TypedDict):
