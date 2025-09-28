@@ -76,22 +76,19 @@ def fetch_emails_node(state: AgentState) -> AgentState:
         except Exception as log_error:
             logger.warning(f"Failed to log emails: {log_error}")
         
-        # Add basic processing to each email
         formatted_emails = []
         for email in new_emails:
-            # Just use the dictionary directly, adding any needed fields
             email_dict = {
                 "id": email.get("id", ""),
                 "subject": email.get("subject", "No Subject"),
                 "sender": email.get("sender", "Unknown"),
-                "body": email.get("body", "")[:500],  # Truncate for LLM processing
+                "body": email.get("body", "")[:1000],
                 "timestamp": email.get("timestamp", datetime.now()),
-                "importance_score": 0.0,  # Default until analysis
             }
             formatted_emails.append(email_dict)
         
         state["emails"].extend(formatted_emails)
-        state["current_step"] = "fetch_calendar"  # Changed from "analyze_emails" to skip analysis
+        state["current_step"] = "fetch_calendar"
         logger.info(f"Fetched {len(formatted_emails)} new emails")
         
     except Exception as e:
@@ -140,10 +137,7 @@ def fetch_calendar_node(state: AgentState) -> AgentState:
                     "end_time": event.get("end_time"),
                     "attendees": event.get("attendees", []),
                     "location": event.get("location", ""),
-                    "description": event.get("description", ""),
-                    "importance_score": 0.0,  # Will be set by analysis
-                    "requires_action": False,
-                    "conflict_detected": False
+                    "description": event.get("description", "")
                 }
                 formatted_events.append(event_dict)
             except Exception as event_error:
@@ -162,12 +156,88 @@ def fetch_calendar_node(state: AgentState) -> AgentState:
     return state
 
 def check_zoom_node(state: AgentState) -> AgentState:
-    """Placeholder for Zoom integration - to be implemented in future"""
-    logger.info("Checking Zoom meetings... (placeholder for future implementation)")
+    """Fetch Zoom user info and upcoming meetings"""
+    logger.info("Checking Zoom meetings and user info...")
     
-    # Simply pass through for now
-    state["current_step"] = "check_slack"
-    
+    try:
+        # Import ZoomAPI if not already available
+        try:
+            from zoom_auth import ZoomAPI
+        except ImportError as e:
+            logger.error(f"Failed to import ZoomAPI: {e}")
+            state["error_count"] += 1
+            state["current_step"] = "check_slack"
+            return state
+
+        # Initialize ZoomAPI
+        zoom_api = ZoomAPI()
+        
+        # Ensure access token is available
+        if not zoom_api.get_access_token():
+            logger.error("Failed to authenticate with Zoom API")
+            state["error_count"] += 1
+            state["current_step"] = "check_slack"
+            return state
+
+        # Fetch user info
+        user_info = zoom_api.get_user_info()
+        if not user_info:
+            logger.error("Failed to retrieve Zoom user info")
+            state["error_count"] += 1
+            state["current_step"] = "check_slack"
+            return state
+
+        # Fetch upcoming meetings
+        meetings_data = zoom_api.get_meetings(meeting_type='upcoming')
+        if not meetings_data:
+            logger.error("Failed to retrieve Zoom meetings")
+            state["error_count"] += 1
+            state["current_step"] = "check_slack"
+            return state
+
+        # Process user info
+        user_dict = {
+            "name": f"{user_info.get('first_name', '')} {user_info.get('last_name', '')}".strip(),
+            "email": user_info.get('email', ''),
+            "account_id": user_info.get('account_id', '')
+        }
+
+        # Process meetings
+        formatted_meetings = []
+        for meeting in meetings_data.get('meetings', []):
+            try:
+                meeting_dict = {
+                    "id": str(meeting.get('id', '')),
+                    "topic": meeting.get('topic', 'Untitled Meeting'),
+                    "start_time": meeting.get('start_time', ''),
+                    "duration": meeting.get('duration', 0),
+                    "join_url": meeting.get('join_url', ''),
+                    "password": meeting.get('password', 'No password'),
+                    "importance_score": 0.0,  # Default, can be set later
+                    "requires_action": False,  # Default, can be analyzed later
+                }
+                formatted_meetings.append(meeting_dict)
+            except Exception as e:
+                logger.error(f"Error processing Zoom meeting {meeting.get('id', 'unknown')}: {e}")
+                continue
+
+        # Update state with Zoom data
+        state["summary"]["zoom_user"] = user_dict
+        state["summary"]["zoom_meetings"] = formatted_meetings
+        state["summary"]["total_zoom_meetings"] = len(formatted_meetings)
+
+        # Log the results
+        logger.info(f"Fetched Zoom user: {user_dict['name']} ({user_dict['email']})")
+        logger.info(f"Fetched {len(formatted_meetings)} upcoming Zoom meetings")
+        
+        # Move to next step
+        state["current_step"] = "check_slack"
+
+    except Exception as e:
+        logger.error(f"Error in Zoom node: {e}")
+        state["error_count"] += 1
+        state["current_step"] = "check_slack"
+
     return state
 
 def check_slack_node(state: AgentState) -> AgentState:
