@@ -1,3 +1,44 @@
+
+pydantic
+
+# LangGraph and LangChain
+langgraph
+langchain
+langchain-community
+langchain-core
+
+
+# HTTP and async
+aiohttp
+aiohttp-retry
+httpx
+requests
+
+# LLM clients (for free LLMs)
+ollama
+groq
+openai # For OpenAI-compatible APIs
+
+# Voice and communication
+twilio
+pydub
+SpeechRecognition
+pyttsx3
+# Utilities
+python-dotenv
+python-dateutil
+pytz
+typing-extensions
+
+# Development and testing
+pytest
+pytest-asyncio
+black
+flake8
+
+# Logging and monitoring
+structlog
+rich
 langgraph
 twilio
 python--dotenv

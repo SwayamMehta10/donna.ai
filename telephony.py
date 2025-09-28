@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 import json
 import logging
 from twilio.rest import Client
-
+from mylogger import logging
 from livekit import api
 from livekit.api import (LiveKitAPI,
                          RoomConfiguration,
@@ -221,12 +221,15 @@ async def setup_twilio_outbound_call(twilio_number,twilio_sid, twilio_auth, uniq
 
         # create ip access control list
         ip_acl_friendly_name = f"{unique_code}_{twilio_number}_ip_acl"
-        existing_ip_acl = None
+        existing_ip_acl = next(
+    (acl for acl in twilio_Client.sip.ip_access_control_lists.list()
+     if acl.friendly_name == ip_acl_friendly_name), None
+)
 
-        for acl in twilio_Client.sip.ip_access_control_lists.list():
-            if acl.friendly_name == ip_acl_friendly_name:
-                existing_ip_acl = acl
-                break
+        # for acl in twilio_Client.sip.ip_access_control_lists.list():
+        #     if acl.friendly_name == ip_acl_friendly_name:
+        #         existing_ip_acl = acl
+        #         break
 
         if existing_ip_acl:
             logging.info(f"IP ACL with friendly name '{ip_acl_friendly_name}' already exists. Reusing.")

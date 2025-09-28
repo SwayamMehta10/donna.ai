@@ -19,7 +19,7 @@ from telephony import (setup_twilio_inbound_call,
 import logging
 # Load environment variables
 load_dotenv()
-
+from mylogger import logging
 # Initialize FastAPI app
 app = FastAPI()
 

@@ -14,14 +14,11 @@ from dataclasses import asdict
 from livekit import api
 from livekit.agents import cli, WorkerOptions, WorkerType, AutoSubscribe, JobContext, metrics, JobProcess
 from livekit.agents.metrics import AgentMetrics, UsageCollector
-from livekit.plugins import silero,  openai, noise_cancellation
-from livekit.plugins.turn_detector.multilingual import MultilingualModel
+# from livekit.agents.multimodal import MultimodalAgent
+# from livekit.agents.pipeline import VoicePipelineAgent
+from livekit.plugins import silero, turn_detector, openai, noise_cancellation
 from livekit.plugins.openai.realtime import RealtimeModel
-from openai.types.beta.realtime.session import TurnDetection, InputAudioNoiseReduction
-from livekit.agents import FunctionTool
-import sys
 from livekit.agents import ChatContext, ChatMessage, StopResponse
-from livekit.plugins.openai import InputAudioNoiseReduction
 from livekit.agents import (
     Agent,
     AgentSession,
@@ -36,33 +33,20 @@ from livekit.agents import (
     llm
 )
 
-from room_management import delete_lk_room
 from livekit.agents import metrics, MetricsCollectedEvent
+
+from openai.types.beta.realtime.session import TurnDetection, InputAudioNoiseReduction
 from livekit.agents.llm import function_tool
 from livekit.agents.voice import MetricsCollectedEvent
-from livekit.plugins.turn_detector.english import EnglishModel
+from livekit.plugins import openai, silero
 
-import fastapi
+# local import
+from mylogger import logging#, init_logger
+from room_management import delete_lk_room
+# from rag_utils import rag_setup, register_rag_func
+from custom_agent import MyAgent
 load_dotenv()
 
-
-class MyAgent(Agent):
-    
-    def __init__(self,use_rag, user_instructions: str, tools: list[FunctionTool], welcome_msg:str) -> None:
-
-        self.use_rag= use_rag
-        logging.info("Inside MyAgent --> Custome_Agent.py")
-        self.welcome_msg = welcome_msg
-        instructions = user_instructions
-        logging.info(f"Instructions has been generated: {instructions} ")
-        try:
-            super().__init__(instructions=instructions, tools=tools)
-            logging.info(f"Agent initialized with {len(tools)} tools")
-            for t in self.tools:
-                logging.info(f"[MyAgent] Loaded tool: {t}")
-        except Exception as e:
-            logging.error(f"Failed to initialize agent: {e}")
-            raise Exception(e, sys)
 
 def prewarm_process(proc: JobProcess):
     proc.userdata["vad"] = silero.VAD.load(min_silence_duration=0.3)
@@ -152,12 +136,12 @@ async def entrypoint(ctx: JobContext):
     tools=[]
 
 
-    tool=function_tool(
-        check_delivery,
-        name= function.get("function_name"),
-        description=function.get("callable_description"),
-    )
-    tools.append(tool)
+    # tool=function_tool(
+    #     check_delivery,
+    #     name= function.get("function_name"),
+    #     description=function.get("callable_description"),
+    # )
+    # tools.append(tool)
 
 
 
@@ -175,23 +159,19 @@ async def entrypoint(ctx: JobContext):
         )
         tools.append(tool)
 
-        session = AgentSession(
-            vad=ctx.proc.userdata["vad"],
-            stt= openai.STT(model="gpt-4o-mini-transcribe"),
-            llm=openai.realtime.RealtimeModel(
-                api_key=os.getenv("OPENAI_API_KEY"),
-                model= "gpt-4o-mini-realtime-preview",
-                voice= "coral",
-                temperature=temperature,
-                input_audio_noise_reduction= InputAudioNoiseReduction(type="far_field")  
-            ),
-            tts=openai.TTS(model= "gpt-4o-mini-tts", voice= "coral", speed=1, instructions= "be expressive"),
-            turn_detection=EnglishModel(),
-            allow_interruptions=True,
+    session = AgentSession(
+        vad=ctx.proc.userdata["vad"],
+        llm=openai.realtime.RealtimeModel(
+            api_key=os.getenv("OPENAI_API_KEY"),
+            model= "gpt-4o-mini-realtime-preview",
+            voice= "coral",
+            temperature=temperature,
+            input_audio_noise_reduction= InputAudioNoiseReduction(type="far_field")  
+        ),
+        # turn_detection=EnglishModel(),    
         )
 
     agent = MyAgent(user_instructions=user_instructions, tools=tools)
-
 
     usage_collector = metrics.UsageCollector()
     @session.on("metrics_collected")

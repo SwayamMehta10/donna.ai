@@ -78,7 +78,7 @@ class GmailAPI:
             
             # Create query to get emails from the last 24 hours
             # Exclude spam and trash, focus on inbox
-            query = f"after:{date_str} -in:spam -in:trash"
+            query = f"after:{date_str} is:unread in:inbox -in:spam -in:trash"
             
             logger.info(f"Fetching emails since {since.strftime('%Y-%m-%d %H:%M:%S')}")
             
