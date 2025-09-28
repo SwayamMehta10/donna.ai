@@ -150,36 +150,37 @@ def log_fetched_calendar_events(events: List[Dict[str, Any]], log_dir: str = "lo
             f.write(f"Fetch Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write(f"Total Events: {len(events)}\n\n")
             
-        for i, event in enumerate(events, 1):
-            try:
-                if isinstance(event, dict):
-                    title = event.get('title', 'No Title')
-                    start_time = event.get('start_time', 'Unknown')
-                    end_time = event.get('end_time', 'Unknown')
-                    attendees = event.get('attendees', [])
-                    location = event.get('location', 'None')
-                else:
-                    title = str(event)[:50]
-                    start_time = 'Unknown'
-                    end_time = 'Unknown'
-                    attendees = []
-                    location = 'None'
-                
-                # Handle attendees count safely
-                if isinstance(attendees, list):
-                    attendee_count = len(attendees)
-                else:
-                    attendee_count = 0
+            # Process each event inside the with block to keep file open
+            for i, event in enumerate(events, 1):
+                try:
+                    if isinstance(event, dict):
+                        title = event.get('title', 'No Title')
+                        start_time = event.get('start_time', 'Unknown')
+                        end_time = event.get('end_time', 'Unknown')
+                        attendees = event.get('attendees', [])
+                        location = event.get('location', 'None')
+                    else:
+                        title = str(event)[:50]
+                        start_time = 'Unknown'
+                        end_time = 'Unknown'
+                        attendees = []
+                        location = 'None'
                     
-                f.write(f"Event #{i}:\n")
-                f.write(f"  Title: {title}\n")
-                f.write(f"  Start: {start_time}\n")
-                f.write(f"  End: {end_time}\n")
-                f.write(f"  Attendees: {attendee_count}\n")
-                f.write(f"  Location: {location}\n")
-                f.write("-" * 50 + "\n")
-            except Exception as e:
-                f.write(f"Error processing event #{i}: {str(e)}\n")
+                    # Handle attendees count safely
+                    if isinstance(attendees, list):
+                        attendee_count = len(attendees)
+                    else:
+                        attendee_count = 0
+                        
+                    f.write(f"Event #{i}:\n")
+                    f.write(f"  Title: {title}\n")
+                    f.write(f"  Start: {start_time}\n")
+                    f.write(f"  End: {end_time}\n")
+                    f.write(f"  Attendees: {attendee_count}\n")
+                    f.write(f"  Location: {location}\n")
+                    f.write("-" * 50 + "\n")
+                except Exception as e:
+                    f.write(f"Error processing event #{i}: {str(e)}\n")
                 
         print(f"📄 CALENDAR SUMMARY: {summary_file}")
         

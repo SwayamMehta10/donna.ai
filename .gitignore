@@ -1,7 +1,8 @@
-.env
 client_secret.json
-.env/
-__pycache__/
-logs/
-.venv/
+myenv
+.env
+credentials
+__pycache__
+logs
+venv
 temp/

@@ -56,4 +56,55 @@ google-api-python-client
 google-auth-httplib2
 google-auth-oauthlib
 pytz
+# Core dependencies for AI Voice Agent
+fastapi
+uvicorn
+pydantic
+
+# LangGraph and LangChain
+langgraph
+langchain
+langchain-community
+langchain-core
+
+# Google API clients
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+google-api-python-client
+googleapis-common-protos
+
+# HTTP and async
+aiohttp
+aiohttp-retry
+httpx
+requests
+
+# LLM clients (for free LLMs)
+ollama
+groq
+openai  # For OpenAI-compatible APIs
+
+# Voice and communication
+twilio
+pydub
+SpeechRecognition
+pyttsx3
+
+# Utilities
+python-dotenv
+python-dateutil
+pytz
+typing-extensions
+
+# Development and testing
+pytest
+pytest-asyncio
+black
+flake8
+
+# Logging and monitoring
+structlog
+rich
+
 bs4
