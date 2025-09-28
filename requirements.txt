@@ -106,3 +106,5 @@ flake8
 # Logging and monitoring
 structlog
 rich
+
+bs4
