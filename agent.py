@@ -33,6 +33,7 @@ from livekit.agents import (
     llm
 )
 
+from functions import fetch_emails
 from livekit.agents import metrics, MetricsCollectedEvent
 
 from openai.types.beta.realtime.session import TurnDetection, InputAudioNoiseReduction
@@ -127,6 +128,14 @@ async def entrypoint(ctx: JobContext):
             description= """
                 Called when you are informed that the call is being forwarded to voicemail
                 Hang up call if it is being forwarded to vaoicemail.
+            """
+        )
+
+        tool= function_tool(
+            voicemail,
+            name= "fetch_emails",
+            description= """
+                Called when users asks anything regarding emails..
             """
         )
 
