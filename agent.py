@@ -78,7 +78,7 @@ async def entrypoint(ctx: JobContext):
     outbound_details= metadata.get("outbound_details")
     outbound_call_context = outbound_details.get("outbound_call_context")
     if outbound_call_context is not None:
-        user_instructions += f" The call context is : {outbound_call_context}"
+        user_instructions += f" {outbound_call_context}. So talk to the user accordingly and do what is needed."
     logging.info(f"User Instructions: {user_instructions}")
     logging.info(f"outbound_details: {outbound_details}")
 

@@ -120,7 +120,7 @@ async def process_item(request: ItemRequest, background_task: BackgroundTasks):
 
         if request.reservation_context is not None:
             request.call_context= request.reservation_context
-            user_instructions = f"""You are calling on behalf of {name}"""
+            user_instructions = f"""You are making a outbound call to a store on behalf of {name} for"""
         outbound_details={
             "outbound_call_id": request.call_id,
             "outbound_name": request.name,
