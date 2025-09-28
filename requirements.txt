@@ -1,0 +1,17 @@
+langgraph
+twilio
+python--dotenv
+livekit-api
+livekit
+livekit-agents     
+livekit-plugins-turn-detector
+fastapi
+uvicorn
+livekit-plugins-openai
+livekit-plugins-silero
+silero
+livekit-plugins-noise-cancellation
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib
+pytz
