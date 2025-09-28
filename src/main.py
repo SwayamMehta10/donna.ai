@@ -252,22 +252,55 @@ async def main():
             for idx, email in enumerate(summary.get('email_subjects', []), 1):
                 print(f"  {idx}. {email['subject']} (from: {email['sender']})")
         
-        # Call the API with the formatted summary
-        print("\n🔄 Calling /get_room_token API with summarized data...")
+        # Check if there's a reservation text in the state
+        reservation_text = agent.state.get("reservation_text", "")
         
-        # Keep the rich, detailed summary but handle any characters that might cause JSON issues
-        # Properly escape the text for JSON - this preserves all the details
-        # We just need to make sure it's properly formatted as a JSON string
-        
-        # Using our fully detailed summary with proper JSON escaping
-        response = await call_room_token_api(
-            call_context=formatted_summary,  # Using the original detailed summary
-            unique_code=os.getenv("UNIQUE_CODE", "parva123"),
-            bot_name=os.getenv("BOT_NAME", "Donna"),
-            name=os.getenv("USER_NAME", "Parva"),
-            callee_number="+16027406693",  # Removed + to avoid any issues
-            call_id=0
-        )
+        if reservation_text:
+            # Call API with reservation details
+            print("\n🔄 Calling /get_room_token API with reservation details...")
+            
+            # Get reservation summary for logging
+            reservation_summary = agent.state.get("reservation_summary", {})
+            if reservation_summary:
+                print("\n📑 RESERVATION DETAILS:")
+                print(f"  Location: {reservation_summary.get('location_name', 'Unknown')}")
+                print(f"  Time: {reservation_summary.get('time', 'Unknown')}")
+                print(f"  Date: {reservation_summary.get('date', 'Today')}")
+                print(f"  People: {reservation_summary.get('people', 'Unknown')}")
+                
+                # Print location details if available
+                location_details = reservation_summary.get('location_details', {})
+                if location_details:
+                    print("\n📍 LOCATION DETAILS:")
+                    if location_details.get('phone'):
+                        print(f"  Phone: {location_details['phone']}")
+                    if location_details.get('address'):
+                        print(f"  Address: {location_details['address']}")
+                    if location_details.get('hours'):
+                        print(f"  Hours: {location_details['hours']}")
+            
+            # Call API with reservation text as context
+            response = await call_room_token_api(
+                call_context=reservation_text,  # Using reservation text
+                unique_code=os.getenv("UNIQUE_CODE", "parva123"),
+                bot_name=os.getenv("BOT_NAME", "Donna"),
+                name=os.getenv("USER_NAME", "Parva"),
+                callee_number="+16027406693",
+                call_id=0
+            )
+        else:
+            # Call API with regular summary
+            print("\n🔄 Calling /get_room_token API with summarized data...")
+            
+            # Using our fully detailed summary with proper JSON escaping
+            response = await call_room_token_api(
+                call_context=formatted_summary,  # Using the original detailed summary
+                unique_code=os.getenv("UNIQUE_CODE", "parva123"),
+                bot_name=os.getenv("BOT_NAME", "Donna"),
+                name=os.getenv("USER_NAME", "Parva"),
+                callee_number="+16027406693",
+                call_id=0
+            )
         
         print(f"📞 API Response: {response}")
         
