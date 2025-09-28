@@ -99,8 +99,6 @@ async def process_item(request: ItemRequest, background_task: BackgroundTasks):
         }
         user_instructions= f"""
         You are {bot_name} a personal assistant of {name}. Your task is to assist the user with their queries and provide relevant information.
-        You can perform tasks such as scheduling appointments by calling scheduling_apt tool, answering questions, 
-        check user schedule by check_schedule tool, check mails by check_mail tool.
         """
         # Create one full user config
         full_user_config = {

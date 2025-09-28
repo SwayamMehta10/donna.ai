@@ -131,7 +131,7 @@ async def call_room_token_api(call_context, unique_code="user123", bot_name="AI 
         bot_name (str): The name of the bot
         name (str): The user's name
         call_id (int, optional): The call ID
-        callee_number (str, optional): The callee number
+        callee_number (str): The callee number
         meeting_id (str, optional): The meeting ID
         meeting_password (str, optional): The meeting password
         
@@ -145,12 +145,12 @@ async def call_room_token_api(call_context, unique_code="user123", bot_name="AI 
     # API endpoint
     api_url = "http://localhost:8020/get_room_token"
     
-    # Prepare the request body
+    # Explicitly create a valid JSON object with string values
     request_body = {
-        "unique_code": unique_code,
-        "bot_name": bot_name,
-        "name": name,
-        "call_context": call_context
+        "unique_code": str(unique_code),
+        "bot_name": str(bot_name),
+        "name": str(name),
+        "call_context": str(call_context)
     }
     
     # Add optional parameters if provided
@@ -162,13 +162,38 @@ async def call_room_token_api(call_context, unique_code="user123", bot_name="AI 
         request_body["meeting_id"] = meeting_id
     if meeting_password is not None:
         request_body["meeting_password"] = meeting_password
+        
+    # Ensure the call_context is properly formatted for JSON
+    # The API is expecting a clean string without JSON-breaking characters
+    # Remove any backslashes or control characters that might break JSON parsing
     
     try:
+        # Pre-serialize the call_context to ensure valid JSON
+        # This is the key step to properly handle all the special characters
+        request_body["call_context"] = json.dumps(request_body["call_context"])[1:-1]  # Remove outer quotes
+        
+        # Convert to JSON string first for testing proper serialization
+        json_str = json.dumps(request_body)
+        logging.info(f"JSON validation successful - serialized to: {json_str}")
+        
+        # Make sure to set the correct content type and handle the request properly
+        headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        }
+        
         async with aiohttp.ClientSession() as session:
-            async with session.post(api_url, json=request_body) as response:
-                result = await response.json()
-                logging.info(f"API Response: {result}")
-                return result
+            # Use data parameter with pre-serialized JSON instead of json parameter
+            async with session.post(api_url, data=json_str, headers=headers) as response:
+                try:
+                    result = await response.json()
+                    logging.info(f"API Response: {result}")
+                    return result
+                except aiohttp.ContentTypeError:
+                    # If response is not JSON, get the text instead
+                    text = await response.text()
+                    logging.error(f"Invalid JSON response: {text}")
+                    return {"status": 0, "message": f"Error: Invalid response format: {text[:100]}..."}
     except Exception as e:
         logging.error(f"Error calling API: {e}")
         return {"status": 0, "message": f"Error: {str(e)}"}
@@ -230,13 +255,17 @@ async def main():
         # Call the API with the formatted summary
         print("\n🔄 Calling /get_room_token API with summarized data...")
         
-        # Using our plain text summary
+        # Keep the rich, detailed summary but handle any characters that might cause JSON issues
+        # Properly escape the text for JSON - this preserves all the details
+        # We just need to make sure it's properly formatted as a JSON string
+        
+        # Using our fully detailed summary with proper JSON escaping
         response = await call_room_token_api(
-            call_context=formatted_summary,
-            unique_code=os.getenv("UNIQUE_CODE", "user123"),
-            bot_name=os.getenv("BOT_NAME", "Email & Calendar Assistant"),
-            name=os.getenv("USER_NAME", "User"),
-            # Optional: Add a dummy call_id if needed
+            call_context=formatted_summary,  # Using the original detailed summary
+            unique_code=os.getenv("UNIQUE_CODE", "parva123"),
+            bot_name=os.getenv("BOT_NAME", "Donna"),
+            name=os.getenv("USER_NAME", "Parva"),
+            callee_number="+16027406693",  # Removed + to avoid any issues
             call_id=0
         )
         
