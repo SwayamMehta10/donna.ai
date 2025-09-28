@@ -160,9 +160,22 @@ def check_zoom_node(state: AgentState) -> AgentState:
     logger.info("Checking Zoom meetings and user info...")
     
     try:
-        # Import ZoomAPI if not already available
+        # Import ZoomAPI from the local module
         try:
-            from zoom_auth import ZoomAPI
+            # Try different import approaches
+            try:
+                # First try relative import from current package
+                from .zoom_auth import ZoomAPI
+            except (ImportError, ValueError):
+                # If that fails, try direct import (if in same directory)
+                import sys
+                import os
+                current_dir = os.path.dirname(os.path.abspath(__file__))
+                if current_dir not in sys.path:
+                    sys.path.append(current_dir)
+                from zoom_auth import ZoomAPI
+                
+            logger.info("Successfully imported ZoomAPI")
         except ImportError as e:
             logger.error(f"Failed to import ZoomAPI: {e}")
             state["error_count"] += 1
@@ -241,10 +254,53 @@ def check_zoom_node(state: AgentState) -> AgentState:
     return state
 
 def check_slack_node(state: AgentState) -> AgentState:
-    """Placeholder for Slack integration - to be implemented in future"""
-    logger.info("Checking Slack messages... (placeholder for future implementation)")
+    """Placeholder for Slack integration with sample data for demo purposes"""
+    logger.info("Checking Slack messages... (sample data for demonstration)")
     
-    # Simply pass through for now
+    try:
+        # Add sample Slack data for demonstration
+        current_date = datetime.now()
+        
+        # Sample Slack messages
+        state["slack_messages"] = [
+            {
+                "channel": "general",
+                "sender": "John Doe",
+                "text": "Does anyone have the latest sales report?",
+                "timestamp": (current_date - timedelta(minutes=15)).strftime("%I:%M %p"),
+                "is_unread": True
+            },
+            {
+                "channel": "marketing",
+                "sender": "Jane Smith",
+                "text": "The new campaign materials are ready for review",
+                "timestamp": (current_date - timedelta(hours=1)).strftime("%I:%M %p"),
+                "is_unread": True
+            },
+            {
+                "channel": "engineering",
+                "sender": "Bob Johnson",
+                "text": "I've deployed the latest fixes to production",
+                "timestamp": (current_date - timedelta(hours=2)).strftime("%I:%M %p"),
+                "is_unread": False
+            },
+            {
+                "channel": "random",
+                "sender": "Alice Brown",
+                "text": "Anyone want to join for lunch today?",
+                "timestamp": (current_date - timedelta(hours=3)).strftime("%I:%M %p"),
+                "is_unread": False
+            }
+        ]
+        
+        # Count unread messages
+        state["slack_unread_count"] = sum(1 for msg in state["slack_messages"] if msg.get("is_unread", False))
+        
+        logger.info(f"Added {len(state['slack_messages'])} sample Slack messages with {state['slack_unread_count']} unread")
+    except Exception as e:
+        logger.error(f"Error in Slack node: {e}")
+    
+    # Continue to next step
     state["current_step"] = "make_reservation"
     
     return state
@@ -545,7 +601,17 @@ def summarize_node(state: AgentState) -> AgentState:
                 "attendees": len(event.get("attendees", [])),
                 "attendee_names": event.get("attendees", [])[:5]  # Show up to 5 attendees
             } for event in today_events],
-            "email_subjects": [{"subject": email["subject"], "sender": email["sender"]} for email in state["emails"][:10]]  # Limit to first 10
+            "email_subjects": [{"subject": email["subject"], "sender": email["sender"]} for email in state["emails"][:10]],  # Limit to first 10
+            
+            # Include Zoom information if available
+            "total_zoom_meetings": state["summary"].get("total_zoom_meetings", 0) if "summary" in state and "total_zoom_meetings" in state["summary"] else 0,
+            "zoom_meetings": state["summary"].get("zoom_meetings", []) if "summary" in state and "zoom_meetings" in state["summary"] else [],
+            "zoom_user": state["summary"].get("zoom_user", {}) if "summary" in state and "zoom_user" in state["summary"] else {},
+            
+            # Include Slack information if available (placeholder as it's not implemented yet)
+            "slack_messages": state.get("slack_messages", []),
+            "total_slack_messages": len(state.get("slack_messages", [])),
+            "slack_unread_count": state.get("slack_unread_count", 0)
         }
         
         # Log the summary

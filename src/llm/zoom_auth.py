@@ -29,7 +29,7 @@ if not ACCOUNT_ID or not CLIENT_ID or not CLIENT_SECRET:
     exit(1)
 
 class ZoomAPI:
-    def _init_(self):
+    def __init__(self):
         self.access_token = os.getenv('ZOOM_SECRET_TOKEN')  # Unused, overwritten by get_access_token
         self.get_access_token()
     

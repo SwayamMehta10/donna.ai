@@ -110,7 +110,69 @@ def format_summary_for_api(summary):
     
     sections.append("EMAIL SUMMARY:\n" + "\n".join(email_text))
     
-    # 4. CONFLICTS & ACTION ITEMS
+    # 4. ZOOM MEETINGS SECTION
+    zoom_meetings = summary.get("zoom_meetings", [])
+    total_zoom_meetings = summary.get("total_zoom_meetings", 0)
+    zoom_user = summary.get("zoom_user", {})
+    
+    zoom_text = []
+    if total_zoom_meetings > 0:
+        zoom_text.append(f"You have {total_zoom_meetings} upcoming Zoom {'meeting' if total_zoom_meetings == 1 else 'meetings'}.")
+        
+        # Display up to 3 upcoming meetings
+        for meeting in zoom_meetings[:3]:
+            topic = meeting.get("topic", "Untitled Meeting")
+            start_time = meeting.get("start_time", "No time specified")
+            duration = meeting.get("duration", 0)
+            
+            # Format the start time if it's a string in ISO format
+            if isinstance(start_time, str) and 'T' in start_time:
+                try:
+                    dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+                    start_time = dt.strftime("%I:%M %p on %b %d")
+                except:
+                    # Keep as is if parsing fails
+                    pass
+                    
+            meeting_details = f"'{topic}' at {start_time}"
+            if duration:
+                meeting_details += f" ({duration} minutes)"
+                
+            zoom_text.append(f"• {meeting_details}")
+    else:
+        zoom_text.append("You have no upcoming Zoom meetings.")
+        
+    if zoom_user:
+        user_name = zoom_user.get("name", "")
+        if user_name:
+            zoom_text.append(f"You are logged in as {user_name}.")
+    
+    sections.append("ZOOM SUMMARY:\n" + "\n".join(zoom_text))
+    
+    # 5. SLACK SECTION
+    slack_messages = summary.get("slack_messages", [])
+    total_slack_messages = summary.get("total_slack_messages", 0)
+    slack_unread_count = summary.get("slack_unread_count", 0)
+    
+    slack_text = []
+    if total_slack_messages > 0:
+        slack_text.append(f"You have {total_slack_messages} Slack {'message' if total_slack_messages == 1 else 'messages'}, with {slack_unread_count} unread.")
+        
+        # Display up to 3 slack messages if available
+        for i, message in enumerate(slack_messages[:3]):
+            channel = message.get("channel", "Unknown channel")
+            sender = message.get("sender", "Unknown sender")
+            text_preview = message.get("text", "")[:50]  # Limit preview to 50 chars
+            if text_preview and len(message.get("text", "")) > 50:
+                text_preview += "..."
+                
+            slack_text.append(f"• {sender} in #{channel}: \"{text_preview}\"")
+    else:
+        slack_text.append("You have no new Slack messages.")
+    
+    sections.append("SLACK SUMMARY:\n" + "\n".join(slack_text))
+    
+    # 6. CONFLICTS & ACTION ITEMS
     conflicts = summary.get("conflicts", [])
     if conflicts:
         conflict_text = ["ATTENTION NEEDED:"]
@@ -237,6 +299,8 @@ async def main():
         print(f"  📧 Total Emails: {summary.get('total_emails', 0)}")
         print(f"  📅 Total Calendar Events: {summary.get('total_calendar_events', 0)}")
         print(f"  📆 Today's Events: {summary.get('today_events', 0)}")
+        print(f"  🔵 Zoom Meetings: {summary.get('total_zoom_meetings', 0)}")
+        print(f"  💬 Slack Messages: {summary.get('total_slack_messages', 0)} (Unread: {summary.get('slack_unread_count', 0)})")
         
         # Print today's events
         if summary.get('today_events', 0) > 0:
@@ -251,6 +315,45 @@ async def main():
             print("\n📧 RECENT EMAILS:")
             for idx, email in enumerate(summary.get('email_subjects', []), 1):
                 print(f"  {idx}. {email['subject']} (from: {email['sender']})")
+        
+        # Print Zoom meetings
+        if summary.get('total_zoom_meetings', 0) > 0:
+            print("\n🔵 UPCOMING ZOOM MEETINGS:")
+            for idx, meeting in enumerate(summary.get('zoom_meetings', [])[:3], 1):
+                topic = meeting.get("topic", "Untitled Meeting")
+                start_time = meeting.get("start_time", "No time specified")
+                duration = meeting.get("duration", 0)
+                
+                # Format the start time if it's a string in ISO format
+                if isinstance(start_time, str) and 'T' in start_time:
+                    try:
+                        dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+                        start_time = dt.strftime("%I:%M %p on %b %d")
+                    except:
+                        # Keep as is if parsing fails
+                        pass
+                
+                print(f"  {idx}. {topic}")
+                print(f"     Time: {start_time}")
+                if duration:
+                    print(f"     Duration: {duration} minutes")
+                print(f"     Join URL: {meeting.get('join_url', 'No join URL')}")
+        
+        # Print Slack messages
+        if summary.get('total_slack_messages', 0) > 0:
+            print("\n💬 RECENT SLACK MESSAGES:")
+            for idx, message in enumerate(summary.get('slack_messages', [])[:3], 1):
+                sender = message.get("sender", "Unknown sender")
+                channel = message.get("channel", "Unknown channel")
+                text = message.get("text", "No content")
+                
+                # Truncate long messages
+                if len(text) > 50:
+                    text = text[:50] + "..."
+                    
+                print(f"  {idx}. From {sender} in #{channel}")
+                print(f"     \"{text}\"")
+                print(f"     Time: {message.get('timestamp', 'Unknown time')}")
         
         # Check if there's a reservation text in the state
         reservation_text = agent.state.get("reservation_text", "")
