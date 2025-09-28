@@ -33,7 +33,7 @@ class AIVoiceAgent:
         self.thread_id = "main_thread"
         
     async def start(self):
-        """Start the agent monitoring loop"""
+        """Start the agent - fetch and analyze data once"""
         logger.info("Starting AI Voice Agent...")
         self.running = True
         
@@ -42,7 +42,8 @@ class AIVoiceAgent:
         signal.signal(signal.SIGTERM, self._signal_handler)
         
         try:
-            await self._monitoring_loop()
+            # Fetch and analyze data once instead of continuously monitoring
+            await self._fetch_and_analyze_once()
         except KeyboardInterrupt:
             logger.info("Received interrupt signal")
         except Exception as e:
@@ -50,76 +51,42 @@ class AIVoiceAgent:
         finally:
             await self.stop()
     
-    async def _monitoring_loop(self):
-        """Main monitoring loop that runs the LangGraph workflow"""
+    async def _fetch_and_analyze_once(self):
+        """One-time run of the LangGraph workflow"""
         config = {
             "configurable": {"thread_id": self.thread_id},
             "recursion_limit": 50  # Increase recursion limit
         }
         
-        while self.running:
-            try:
-                # Run one iteration of the workflow
-                logger.info(f"Running workflow iteration - Current step: {self.state.get('current_step', 'unknown')}")
-                
-                # Execute the workflow
-                result = await self.app.ainvoke(self.state, config=config)
-                self.state.update(result)
-                
-                # Print status update to console
-                email_count = len(self.state.get("emails", []))
-                calendar_count = len(self.state.get("calendar_events", []))
-                conflicts = len(self.state.get("conflicts", []))
-                important_items = len(self.state.get("important_items", []))
-                
-                print(f"\n🔄 Iteration Complete:")
-                print(f"  📧 Emails processed: {email_count}")
-                print(f"  📅 Calendar events: {calendar_count}")
-                print(f"  ⚠️  Conflicts detected: {conflicts}")
-                print(f"  🚨 Important items: {important_items}")
-                print(f"  💤 Sleeping for {self._get_sleep_duration()} seconds...")
-                
-                # Check if we need to pause monitoring
-                if not self.state.get("monitoring_active", True):
-                    logger.info("Monitoring paused by user request")
-                    break
-                
-                # Determine sleep time based on current state
-                sleep_duration = self._get_sleep_duration()
-                logger.info(f"Sleeping for {sleep_duration} seconds before next iteration")
-                
-                await asyncio.sleep(sleep_duration)
-                
-            except Exception as e:
-                logger.error(f"Error in monitoring loop: {e}")
-                self.state["error_count"] = self.state.get("error_count", 0) + 1
-                
-                # If too many errors, stop the agent
-                if self.state["error_count"] > 10:
-                    logger.critical("Too many consecutive errors, stopping agent")
-                    break
-                
-                # Wait before retrying
-                await asyncio.sleep(60)  # Wait 1 minute before retrying
+        try:
+            # Run through all workflow steps once
+            logger.info(f"Running workflow once - Current step: {self.state.get('current_step', 'unknown')}")
+            
+            # Execute the workflow
+            result = await self.app.ainvoke(self.state, config=config)
+            self.state.update(result)
+            
+            # Print status update to console
+            email_count = len(self.state.get("emails", []))
+            calendar_count = len(self.state.get("calendar_events", []))
+            conflicts = len(self.state.get("conflicts", []))
+            important_items = len(self.state.get("important_items", []))
+            
+            print(f"\n✅ Processing Complete:")
+            print(f"  📧 Emails processed: {email_count}")
+            print(f"  📅 Calendar events: {calendar_count}")
+            print(f"  ⚠️  Conflicts detected: {conflicts}")
+            print(f"  🚨 Important items: {important_items}")
+            
+            # Set monitoring_active to False to indicate we're done
+            self.state["monitoring_active"] = False
+            
+        except Exception as e:
+            logger.error(f"Error in workflow execution: {e}")
+            self.state["error_count"] = self.state.get("error_count", 0) + 1
+            raise e
     
-    def _get_sleep_duration(self) -> int:
-        """Determine how long to sleep based on current state"""
-        current_step = self.state.get("current_step", "fetch_emails")
-        
-        # If we're waiting for user input, check more frequently
-        if self.state.get("needs_user_input", False):
-            return 30  # 30 seconds
-        
-        # If we just processed user input, wait a bit longer
-        if current_step == "execute_actions":
-            return 300  # 5 minutes
-        
-        # During normal monitoring, check every 5 minutes for emails
-        # and every 15 minutes for calendar
-        if current_step in ["fetch_emails", "analyze_emails"]:
-            return 300  # 5 minutes
-        
-        return 900  # 15 minutes for other states
+    # _get_sleep_duration method removed as it's no longer needed for one-time processing
     
     async def stop(self):
         """Stop the agent gracefully"""
@@ -168,46 +135,12 @@ class AIVoiceAgent:
         }
     
     async def force_check(self):
-        """Force an immediate check of emails and calendar"""
-        logger.info("Forcing immediate check...")
+        """Force a check of emails and calendar - same as _fetch_and_analyze_once"""
+        logger.info("Running email and calendar check...")
         
-        config = {
-            "configurable": {"thread_id": self.thread_id},
-            "recursion_limit": 50
-        }
-        
-        # Reset steps to start a full check sequence
-        self.state["current_step"] = "fetch_emails"
-        
+        # Just call the one-time fetch and analyze method
         try:
-            # Execute workflow to fetch emails
-            result = await self.app.ainvoke(self.state, config=config)
-            self.state.update(result)
-            
-            # Now fetch calendar events
-            self.state["current_step"] = "fetch_calendar"
-            result = await self.app.ainvoke(self.state, config=config)
-            self.state.update(result)
-            
-            # Analyze emails
-            self.state["current_step"] = "analyze_emails"
-            result = await self.app.ainvoke(self.state, config=config)
-            self.state.update(result)
-            
-            # Analyze calendar events
-            self.state["current_step"] = "analyze_calendar"
-            result = await self.app.ainvoke(self.state, config=config)
-            self.state.update(result)
-            
-            # Detect conflicts
-            self.state["current_step"] = "detect_conflicts"
-            result = await self.app.ainvoke(self.state, config=config)
-            self.state.update(result)
-            
-            # Set next step to wait to avoid immediate re-fetching in monitoring loop
-            self.state["current_step"] = "wait"
-            self.state["last_check"] = datetime.now()
-        
+            await self._fetch_and_analyze_once()
         except Exception as e:
             logger.error(f"Error in force_check: {e}")
             # Reset to fetch emails on error

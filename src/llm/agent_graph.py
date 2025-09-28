@@ -92,11 +92,9 @@ class AgentState(TypedDict):
     emails: List[EmailData]
     calendar_events: List[CalendarEvent]
     
-    # Analysis results
+    # Legacy fields (kept for compatibility but not used)
     conflicts: List[Conflict]
     important_items: List[Dict[str, Any]]
-    
-    # User interactions
     user_interactions: List[UserInteraction]
     pending_actions: List[Dict[str, Any]]
     
@@ -109,6 +107,9 @@ class AgentState(TypedDict):
     current_step: str
     needs_user_input: bool
     voice_call_scheduled: bool
+    
+    # New simplified summary field
+    summary: Dict[str, Any]
 
 # Node Functions
 def fetch_emails_node(state: AgentState) -> AgentState:
@@ -528,24 +529,46 @@ def execute_actions_node(state: AgentState) -> AgentState:
         
     return state
 
-def monitor_node(state: AgentState) -> AgentState:
-    """Continue monitoring and update system state"""
-    logger.info("Returning to monitoring mode...")
+def summarize_node(state: AgentState) -> AgentState:
+    """Create a summary of emails and calendar events"""
+    logger.info("Creating summary of emails and calendar events...")
     
-    state["last_check"] = datetime.now()
-    state["current_step"] = "fetch_emails"
-    
-    # Reset some state for next cycle
-    state["important_items"] = []
-    state["needs_user_input"] = False
-    
-    # Clean up old completed interactions
-    state["user_interactions"] = [
-        interaction for interaction in state["user_interactions"]
-        if interaction["status"] == "pending" or 
-        (datetime.now() - interaction["timestamp"]).days < 1
-    ]
-    
+    try:
+        # Count today's calendar events
+        today = datetime.now().date()
+        today_events = [
+            event for event in state["calendar_events"] 
+            if isinstance(event.get("start_time"), datetime) and event["start_time"].date() == today
+        ]
+        
+        # Create summary information
+        state["summary"] = {
+            "total_emails": len(state["emails"]),
+            "total_calendar_events": len(state["calendar_events"]),
+            "today_events": len(today_events),
+            "today_events_details": [{
+                "title": event["title"],
+                "time": event["start_time"].strftime("%I:%M %p") if hasattr(event["start_time"], "strftime") else str(event["start_time"]),
+                "location": event.get("location", "No location"),
+                "attendees": len(event.get("attendees", [])),
+                "attendee_names": event.get("attendees", [])[:5]  # Show up to 5 attendees
+            } for event in today_events],
+            "email_subjects": [{"subject": email["subject"], "sender": email["sender"]} for email in state["emails"][:10]]  # Limit to first 10
+        }
+        
+        # Log the summary
+        logger.info(f"Summary generated:")
+        logger.info(f"- Total emails: {state['summary']['total_emails']}")
+        logger.info(f"- Today's events: {state['summary']['today_events']}")
+        
+        # Set final state
+        state["last_check"] = datetime.now()
+        state["monitoring_active"] = False
+        
+    except Exception as e:
+        logger.error(f"Error creating summary: {e}")
+        state["error_count"] += 1
+        
     return state
 
 def should_continue(state: AgentState) -> str:
@@ -590,67 +613,25 @@ def should_continue(state: AgentState) -> str:
 
 # Create the main workflow graph
 def create_agent_graph() -> StateGraph:
-    """Create and configure the LangGraph workflow"""
+    """Create and configure the simplified LangGraph workflow"""
     
     # Initialize the graph
     workflow = StateGraph(AgentState)
     
-    # Add nodes
+    # Add only the necessary nodes
     workflow.add_node("fetch_emails", fetch_emails_node)
     workflow.add_node("fetch_calendar", fetch_calendar_node)
-    workflow.add_node("analyze_emails", analyze_emails_node)
-    workflow.add_node("analyze_calendar", analyze_calendar_node)
-    workflow.add_node("detect_conflicts", detect_conflicts_node)
-    workflow.add_node("prepare_user_interaction", prepare_user_interaction_node)
-    workflow.add_node("call_user", call_user_node)
-    workflow.add_node("process_user_response", process_user_response_node)
-    workflow.add_node("execute_actions", execute_actions_node)
-    workflow.add_node("monitor", monitor_node)
+    workflow.add_node("summarize", summarize_node)
     
     # Set entry point
     workflow.set_entry_point("fetch_emails")
     
-    # Add edges for the workflow
+    # Simplified flow: fetch emails -> fetch calendar -> summarize -> end
     workflow.add_edge("fetch_emails", "fetch_calendar")
-    workflow.add_edge("fetch_calendar", "analyze_emails")
-    workflow.add_edge("analyze_emails", "analyze_calendar")
-    workflow.add_edge("analyze_calendar", "detect_conflicts")
+    workflow.add_edge("fetch_calendar", "summarize")
     
-    # Conditional routing from detect_conflicts
-    workflow.add_conditional_edges(
-        "detect_conflicts",
-        should_continue,
-        {
-            "prepare_user_interaction": "prepare_user_interaction",
-            "monitor": "monitor",
-            END: END
-        }
-    )
-    
-    workflow.add_edge("prepare_user_interaction", "call_user")
-    workflow.add_edge("call_user", "process_user_response")
-    
-    # Conditional routing from process_user_response
-    workflow.add_conditional_edges(
-        "process_user_response",
-        should_continue,
-        {
-            "execute_actions": "execute_actions",
-            "monitor": "monitor",
-            END: END
-        }
-    )
-    
-    workflow.add_edge("execute_actions", "monitor")
-    
-    # Monitor node ends the iteration - no loop back
-    workflow.add_conditional_edges(
-        "monitor",
-        should_continue,
-        {
-            END: END
-        }
-    )
+    # Summarize node always ends the workflow
+    workflow.add_edge("summarize", END)
     
     # Add memory for state persistence
     memory = MemorySaver()
@@ -669,10 +650,11 @@ def initialize_agent_state() -> AgentState:
         important_items=[],
         user_interactions=[],
         pending_actions=[],
-        last_check=datetime.now() - timedelta(hours=1),
+        last_check=datetime.now(),
         monitoring_active=True,
         error_count=0,
         current_step="fetch_emails",
         needs_user_input=False,
-        voice_call_scheduled=False
+        voice_call_scheduled=False,
+        summary={}
     )
