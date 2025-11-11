@@ -32,7 +32,6 @@
         <div class="card highlight-card">
             <div class="card-header">
                 <h3>🚀 Activate Donna</h3>
-                <span class="status-badge" id="agent-status">Checking...</span>
             </div>
             <div class="card-body">
                 <p>Click the button below to activate Donna. She will immediately call you with a summary of your emails and calendar events.</p>
@@ -40,7 +39,6 @@
                     📞 Call Me Now
                 </button>
                 <p class="help-text">Make sure your phone number is set below before activating.</p>
-                <p class="help-text" id="agent-status-detail" style="margin-top: 10px; font-size: 0.9em; color: #666;"></p>
             </div>
         </div>
 
@@ -115,37 +113,6 @@
     <script>
         let userData = null;
 
-        // Check agent status
-        async function checkAgentStatus() {
-            try {
-                const response = await fetch('/agent-status');
-                const status = await response.json();
-                
-                const statusBadge = document.getElementById('agent-status');
-                const statusDetail = document.getElementById('agent-status-detail');
-                const activateBtn = document.getElementById('activate-btn');
-                
-                if (status.running) {
-                    statusBadge.textContent = 'Ready';
-                    statusBadge.className = 'status-badge';
-                    statusDetail.textContent = `Agent worker running (PID: ${status.pid})`;
-                    statusDetail.style.color = '#28a745';
-                    activateBtn.disabled = false;
-                } else {
-                    statusBadge.textContent = 'Not Ready';
-                    statusBadge.className = 'status-badge status-error';
-                    statusDetail.textContent = status.message || 'Agent worker is not running';
-                    statusDetail.style.color = '#dc3545';
-                    activateBtn.disabled = true;
-                }
-            } catch (error) {
-                console.error('Error checking agent status:', error);
-                const statusBadge = document.getElementById('agent-status');
-                statusBadge.textContent = 'Unknown';
-                statusBadge.className = 'status-badge status-error';
-            }
-        }
-
         // Load user data on page load
         async function loadUserData() {
             try {
@@ -172,12 +139,6 @@
                 
                 // Update connection status
                 updateConnectionStatus();
-                
-                // Check agent status
-                await checkAgentStatus();
-                
-                // Periodically check agent status (every 10 seconds)
-                setInterval(checkAgentStatus, 10000);
                 
             } catch (error) {
                 console.error('Error loading user data:', error);
@@ -253,13 +214,10 @@
             }
             
             const btn = document.getElementById('activate-btn');
-            const statusBadge = document.getElementById('agent-status');
             
             // Disable button
             btn.disabled = true;
             btn.textContent = '📞 Activating...';
-            statusBadge.textContent = 'Activating';
-            statusBadge.className = 'status-badge status-active';
             
             try {
                 const response = await fetch('/activate-agent', {
@@ -273,26 +231,17 @@
                 
                 if (response.ok) {
                     showAlert('🎉 Agent activated! You should receive a call shortly.', 'success');
-                    statusBadge.textContent = 'Calling...';
                 } else {
-                    showAlert(result.message || 'Failed to activate agent', 'error');
-                    statusBadge.textContent = 'Error';
-                    statusBadge.className = 'status-badge status-error';
+                    showAlert(result.detail || 'Failed to activate agent', 'error');
                 }
             } catch (error) {
                 console.error('Error activating agent:', error);
                 showAlert('Error activating agent: ' + error.message, 'error');
-                statusBadge.textContent = 'Error';
-                statusBadge.className = 'status-badge status-error';
             } finally {
                 // Re-enable button after 5 seconds
                 setTimeout(() => {
                     btn.disabled = false;
                     btn.textContent = '📞 Call Me Now';
-                    if (statusBadge.textContent !== 'Error') {
-                        statusBadge.textContent = 'Ready';
-                        statusBadge.className = 'status-badge';
-                    }
                 }, 5000);
             }
         }
