@@ -11,15 +11,20 @@ import logging
 import sys
 import os
 from services.gmail import GmailAPI
-from services.calendar import CalendarAPI
+from services.google_calendar import CalendarAPI
+from services.email_analyzer import EmailAnalyzer
 # Org Lookup
 import requests
 import re
 from bs4 import BeautifulSoup
+from dotenv import load_dotenv
 
-# Replace with your API key and CSE ID
-API_KEY = 'AIzaSyDSNb9Ak99yF64K2sc5LAjdSZJ0rLLFl8Q'  # From Google Cloud Credentials
-CSE_ID = 'e47b6bcbeb6e64c9a'    # From cse.google.com
+# Load environment variables
+load_dotenv()
+
+# Get API credentials from environment variables
+API_KEY = os.getenv('GOOGLE_API_KEY')
+CSE_ID = os.getenv('GOOGLE_CSE_ID')
 
 # Add parent directory to path for service imports
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -36,20 +41,21 @@ class AgentState(TypedDict):
     # Data sources - using simple dictionaries instead of typed structures
     emails: List[Dict[str, Any]]
     calendar_events: List[Dict[str, Any]]
-    
+
     # System state
     last_check: datetime
     error_count: int
-    
+
     # Flow control
     current_step: str
-    
+
     # Summary data - contains processed information
     summary: Dict[str, Any]
-    
+
     # Reservation data
     reservation_summary: Dict[str, Any]
     reservation_text: str
+    phone_number_to_call: str  # Phone number for reservation callback
 
 # Node Functions
 def fetch_emails_node(state: AgentState) -> AgentState:
@@ -88,7 +94,7 @@ def fetch_emails_node(state: AgentState) -> AgentState:
             formatted_emails.append(email_dict)
         
         state["emails"].extend(formatted_emails)
-        state["current_step"] = "fetch_calendar"
+        state["current_step"] = "analyze_emails"
         logger.info(f"Fetched {len(formatted_emails)} new emails")
         
     except Exception as e:
@@ -97,6 +103,67 @@ def fetch_emails_node(state: AgentState) -> AgentState:
         
     return state
 
+def analyze_emails_node(state: AgentState) -> AgentState:
+    """Analyze emails using Gemini AI to identify important ones"""
+    logger.info("Analyzing emails with Gemini AI...")
+
+    try:
+        emails = state.get("emails", [])
+
+        if not emails:
+            logger.info("No emails to analyze")
+            state["current_step"] = "fetch_calendar"
+            return state
+
+        # Initialize email analyzer
+        try:
+            analyzer = EmailAnalyzer()
+
+            # Analyze emails
+            analysis_result = analyzer.analyze_emails(emails, max_emails=50)
+
+            # Update state with analyzed emails
+            state["emails"] = analysis_result.get("analyzed_emails", emails)
+
+            # Store important emails separately
+            state["important_emails"] = analysis_result.get("top_5_important", [])
+            state["email_analysis_summary"] = analysis_result.get("overall_summary", "")
+
+            # Log results
+            logger.info(f"Email analysis complete:")
+            logger.info(f"  - Total analyzed: {analysis_result.get('total_analyzed', 0)}")
+            logger.info(f"  - High priority: {analysis_result.get('high_priority_count', 0)}")
+            logger.info(f"  - Requires action: {analysis_result.get('requires_action_count', 0)}")
+
+            # Print top 5 for user
+            print("\nTOP 5 IMPORTANT EMAILS:")
+            for idx, email in enumerate(analysis_result.get("top_5_important", [])[:5], 1):
+                print(f"\n{idx}. {email.get('subject', 'No subject')}")
+                print(f"   From: {email.get('sender', 'Unknown')}")
+                print(f"   Importance: {email.get('importance_score', 0)}/10")
+                print(f"   Urgency: {email.get('urgency', 'unknown')}")
+                if email.get('suggested_action'):
+                    print(f"   📝 Action: {email.get('suggested_action')}")
+
+        except ImportError as e:
+            logger.warning(f"Gemini AI not available, skipping email analysis: {e}")
+            logger.info("Install with: pip install google-generativeai")
+        except ValueError as e:
+            logger.warning(f"Email analysis skipped: {e}")
+            logger.info("Set GEMINI_API_KEY in your .env file")
+        except Exception as e:
+            logger.error(f"Error during email analysis: {e}")
+
+        state["current_step"] = "fetch_calendar"
+
+    except Exception as e:
+        logger.error(f"Error in analyze_emails_node: {e}")
+        state["error_count"] += 1
+        state["current_step"] = "fetch_calendar"
+
+    return state
+
+
 def fetch_calendar_node(state: AgentState) -> AgentState:
     """Fetch calendar events from Google Calendar API"""
     logger.info("Fetching calendar events...")
@@ -104,7 +171,7 @@ def fetch_calendar_node(state: AgentState) -> AgentState:
     try:
         # Use directly imported CalendarAPI or import if needed
         if CalendarAPI is None:
-            from services.calendar import CalendarAPI as Calendar
+            from services.google_calendar import CalendarAPI as Calendar
         else:
             Calendar = CalendarAPI
         
@@ -155,160 +222,18 @@ def fetch_calendar_node(state: AgentState) -> AgentState:
         
     return state
 
-def check_zoom_node(state: AgentState) -> AgentState:
-    """Fetch Zoom user info and upcoming meetings"""
-    logger.info("Checking Zoom meetings and user info...")
-    
-    try:
-        # Import ZoomAPI from the local module
-        try:
-            # Try different import approaches
-            try:
-                # First try relative import from current package
-                from .zoom_auth import ZoomAPI
-            except (ImportError, ValueError):
-                # If that fails, try direct import (if in same directory)
-                import sys
-                import os
-                current_dir = os.path.dirname(os.path.abspath(__file__))
-                if current_dir not in sys.path:
-                    sys.path.append(current_dir)
-                from zoom_auth import ZoomAPI
-                
-            logger.info("Successfully imported ZoomAPI")
-        except ImportError as e:
-            logger.error(f"Failed to import ZoomAPI: {e}")
-            state["error_count"] += 1
-            state["current_step"] = "check_slack"
-            return state
+# Zoom integration removed - not needed for current requirements
 
-        # Initialize ZoomAPI
-        zoom_api = ZoomAPI()
-        
-        # Ensure access token is available
-        if not zoom_api.get_access_token():
-            logger.error("Failed to authenticate with Zoom API")
-            state["error_count"] += 1
-            state["current_step"] = "check_slack"
-            return state
-
-        # Fetch user info
-        user_info = zoom_api.get_user_info()
-        if not user_info:
-            logger.error("Failed to retrieve Zoom user info")
-            state["error_count"] += 1
-            state["current_step"] = "check_slack"
-            return state
-
-        # Fetch upcoming meetings
-        meetings_data = zoom_api.get_meetings(meeting_type='upcoming')
-        if not meetings_data:
-            logger.error("Failed to retrieve Zoom meetings")
-            state["error_count"] += 1
-            state["current_step"] = "check_slack"
-            return state
-
-        # Process user info
-        user_dict = {
-            "name": f"{user_info.get('first_name', '')} {user_info.get('last_name', '')}".strip(),
-            "email": user_info.get('email', ''),
-            "account_id": user_info.get('account_id', '')
-        }
-
-        # Process meetings
-        formatted_meetings = []
-        for meeting in meetings_data.get('meetings', []):
-            try:
-                meeting_dict = {
-                    "id": str(meeting.get('id', '')),
-                    "topic": meeting.get('topic', 'Untitled Meeting'),
-                    "start_time": meeting.get('start_time', ''),
-                    "duration": meeting.get('duration', 0),
-                    "join_url": meeting.get('join_url', ''),
-                    "password": meeting.get('password', 'No password'),
-                    "importance_score": 0.0,  # Default, can be set later
-                    "requires_action": False,  # Default, can be analyzed later
-                }
-                formatted_meetings.append(meeting_dict)
-            except Exception as e:
-                logger.error(f"Error processing Zoom meeting {meeting.get('id', 'unknown')}: {e}")
-                continue
-
-        # Update state with Zoom data
-        state["summary"]["zoom_user"] = user_dict
-        state["summary"]["zoom_meetings"] = formatted_meetings
-        state["summary"]["total_zoom_meetings"] = len(formatted_meetings)
-
-        # Log the results
-        logger.info(f"Fetched Zoom user: {user_dict['name']} ({user_dict['email']})")
-        logger.info(f"Fetched {len(formatted_meetings)} upcoming Zoom meetings")
-        
-        # Move to next step
-        state["current_step"] = "check_slack"
-
-    except Exception as e:
-        logger.error(f"Error in Zoom node: {e}")
-        state["error_count"] += 1
-        state["current_step"] = "check_slack"
-
-    return state
-
-def check_slack_node(state: AgentState) -> AgentState:
-    """Placeholder for Slack integration with sample data for demo purposes"""
-    logger.info("Checking Slack messages... (sample data for demonstration)")
-    
-    try:
-        # Add sample Slack data for demonstration
-        current_date = datetime.now()
-        
-        # Sample Slack messages
-        state["slack_messages"] = [
-            {
-                "channel": "general",
-                "sender": "John Doe",
-                "text": "Does anyone have the latest sales report?",
-                "timestamp": (current_date - timedelta(minutes=15)).strftime("%I:%M %p"),
-                "is_unread": True
-            },
-            {
-                "channel": "marketing",
-                "sender": "Jane Smith",
-                "text": "The new campaign materials are ready for review",
-                "timestamp": (current_date - timedelta(hours=1)).strftime("%I:%M %p"),
-                "is_unread": True
-            },
-            {
-                "channel": "engineering",
-                "sender": "Bob Johnson",
-                "text": "I've deployed the latest fixes to production",
-                "timestamp": (current_date - timedelta(hours=2)).strftime("%I:%M %p"),
-                "is_unread": False
-            },
-            {
-                "channel": "random",
-                "sender": "Alice Brown",
-                "text": "Anyone want to join for lunch today?",
-                "timestamp": (current_date - timedelta(hours=3)).strftime("%I:%M %p"),
-                "is_unread": False
-            }
-        ]
-        
-        # Count unread messages
-        state["slack_unread_count"] = sum(1 for msg in state["slack_messages"] if msg.get("is_unread", False))
-        
-        logger.info(f"Added {len(state['slack_messages'])} sample Slack messages with {state['slack_unread_count']} unread")
-    except Exception as e:
-        logger.error(f"Error in Slack node: {e}")
-    
-    # Continue to next step
-    state["current_step"] = "make_reservation"
-    
-    return state
+# Slack integration removed - not needed for current requirements
 
 def lookup_organization(organization_name):
     """Search Google Custom Search for organization details."""
+    if not API_KEY or not CSE_ID:
+        logger.error("Google Custom Search API credentials not configured")
+        return None
+
     query = f"{organization_name} contact details and timings"
-    
+
     try:
         search_url = f"https://www.googleapis.com/customsearch/v1?key={API_KEY}&cx={CSE_ID}&q={query.replace(' ', '+')}&num=5"
         response = requests.get(search_url)
@@ -367,214 +292,106 @@ def make_reservation_node(state: AgentState) -> AgentState:
     import os
     import groq
     import json
-    
+    import re
+
     logger.info("Checking if user wants to make a reservation...")
-    
+
     # Get user input for reservation
-    needs_reservation = input("Do you want to make any reservations or appointments? ")
+    needs_reservation = input("\n🍽️  Do you want to make a reservation? (yes/no): ").strip().lower()
     
     # Skip if user doesn't want to make a reservation
-    if not needs_reservation or needs_reservation.lower() == 'no' or needs_reservation.lower() == 'skip':
-        logger.info("No reservation requested, proceeding to summary")
+    if needs_reservation in ['no', 'n', 'skip', 'nope']:
+        logger.info("No reservation requested, proceeding to summary and call")
         state["current_step"] = "summarize"
         return state
-    
+
+    # Interactive reservation details collection
     try:
-        # Get Groq API key from environment
-        api_key = os.getenv('GROQ_API_KEY') or os.getenv('LLM_API_KEY')
-        if not api_key:
-            logger.error("Groq API key not found in environment variables")
+        print("\n📋 Let's collect the reservation details...")
+
+        # Collect restaurant name
+        place_name = input("🏪 Restaurant name: ").strip()
+        if not place_name:
+            logger.info("No restaurant name provided, skipping reservation")
             state["current_step"] = "summarize"
             return state
-            
-        # Initialize Groq client
-        client = groq.Groq(api_key=api_key)
-        
-        # Define the extraction prompt
-        prompt = f"""
-        Extract the following information from the user's request:
-        - Restaurant/Place name
-        - Date (today if not specified)
-        - Time
-        - Number of people/guests
-        - Any special requests
-        
-        Format the output as JSON with the following structure:
-        {{
-            "place_name": "string",
-            "date": "string",
-            "time": "string",
-            "people": "number as string",
-            "special_requests": "string or null"
-        }}
-        
-        User Request: {needs_reservation}
-        
-        JSON Output:
-        """
-        
-        # Call Groq API
-        logger.info("Calling Groq API to extract reservation details...")
-        response = client.chat.completions.create(
-            messages=[{"role": "user", "content": prompt}],
-            model="llama-3.1-8b-instant",
-            temperature=0.1,
-            max_tokens=500
-        )
-        
-        # Extract JSON from response
-        result_text = response.choices[0].message.content
-        logger.info(f"Raw response from Groq: {result_text}")
-        
-        # Find JSON content between braces
-        json_start = result_text.find('{')
-        json_end = result_text.rfind('}') + 1
-        
-        if json_start >= 0 and json_end > json_start:
-            json_content = result_text[json_start:json_end]
-            
-            try:
-                # Replace any newlines, extra spaces that might cause parsing issues
-                cleaned_json = json_content.replace('\n', ' ').replace('\r', '')
-                print(f"Attempting to parse JSON: {cleaned_json}")
-                reservation_details = json.loads(cleaned_json)
-                logger.info(f"Extracted reservation details: {reservation_details}")
-            except json.JSONDecodeError as e:
-                logger.error(f"JSON parsing error: {e}, JSON content: {cleaned_json}")
-                
-                # Fallback to manual extraction
-                print("Using fallback extraction method...")
-                # Create a simple extraction based on the original request
-                reservation_details = {
-                    "place_name": needs_reservation.split("at ")[1].split(" for ")[0].strip() if "at " in needs_reservation and " for " in needs_reservation else "",
-                    "time": needs_reservation.split(" for ")[1].split(" ")[0] if " for " in needs_reservation and len(needs_reservation.split(" for ")) > 1 else "",
-                    "date": "tonight" if "tonight" in needs_reservation else "today",
-                    "people": "".join([c for c in needs_reservation.split("for ")[-1] if c.isdigit()]) if "for " in needs_reservation else ""
-                }
-            
-            # Get organization details using the place name
-            place_name = reservation_details.get("place_name", "")
-            if place_name:
-                location_details = lookup_organization(place_name)
-                logger.info(f"Organization details: {location_details}")
-                
-                # Create summary for reservation
-                reservation_summary = {
-                    "reservation_type": "restaurant",  # Default to restaurant
-                    "location_name": place_name,
-                    "location_details": location_details,
-                    "time": reservation_details.get("time", ""),
-                    "date": reservation_details.get("date", "today"),
-                    "people": reservation_details.get("people", ""),
-                    "special_requests": reservation_details.get("special_requests", "")
-                }
-                
-                # Format text for call context
-                reservation_text = f"I'd like to make a reservation at {place_name} for {reservation_summary['time']} on {reservation_summary['date']} for {reservation_summary['people']} people."
-                
-                # Add organization details if available
-                if location_details:
-                    if location_details.get("phone"):
-                        reservation_text += f" The phone number is {location_details['phone']}."
-                    if location_details.get("address"):
-                        reservation_text += f" The address is {location_details['address']}."
-                    if location_details.get("hours"):
-                        reservation_text += f" They're open {location_details['hours']}."
-                
-                # Store reservation data in state
-                state["reservation_summary"] = reservation_summary
-                state["reservation_text"] = reservation_text
-                
-                print("✅ Successfully processed reservation request")
-                print(f"📍 Location: {place_name}")
-                print(f"🕒 Time: {reservation_summary['time']}")
-                print(f"📅 Date: {reservation_summary['date']}")
-                print(f"👥 People: {reservation_summary['people']}")
-                
-                # Skip summarize node and end flow
-                logger.info("Reservation details extracted, ending flow")
-                return state
-            else:
-                logger.error("No place name extracted from user input")
+
+        # Collect number of people
+        people = input("👥 Number of people: ").strip()
+
+        # Collect date
+        date = input("📅 Date (e.g., 'today', 'tomorrow', '12/25'): ").strip() or "today"
+
+        # Collect time
+        time = input("🕐 Time (e.g., '7:00 PM', '19:00'): ").strip()
+
+        # Optional special requests
+        special_requests = input("📝 Any special requests? (optional): ").strip() or None
+
+        logger.info(f"Collected reservation details: {place_name}, {people} people, {date} at {time}")
+
+        # Lookup restaurant details
+        print(f"\n🔍 Looking up {place_name} details...")
+        location_details = lookup_organization(place_name)
+
+        if location_details:
+            logger.info(f"Found location details: {location_details}")
+            print(f"✅ Found: {location_details.get('phone', 'No phone')}")
+            if location_details.get('address'):
+                print(f"   Address: {location_details['address']}")
+            if location_details.get('hours'):
+                print(f"   Hours: {location_details['hours']}")
         else:
-            logger.error("Could not extract JSON from Groq response")
-    
+            logger.warning(f"Could not find details for {place_name}")
+            location_details = {}
+
+        # Create reservation summary
+        reservation_summary = {
+            "reservation_type": "restaurant",
+            "location_name": place_name,
+            "location_details": location_details,
+            "time": time,
+            "date": date,
+            "people": people,
+            "special_requests": special_requests
+        }
+
+        # Create call context for making the reservation
+        phone = location_details.get("phone") if location_details else None
+        if phone:
+            reservation_text = (
+                f"Call {place_name} at {phone} to make a reservation "
+                f"for {people} people on {date} at {time}."
+            )
+            if special_requests:
+                reservation_text += f" Special requests: {special_requests}."
+
+            # Store reservation data
+            state["reservation_summary"] = reservation_summary
+            state["reservation_text"] = reservation_text
+            state["phone_number_to_call"] = phone
+
+            print(f"\n✅ Reservation details collected!")
+            print(f"📍 Restaurant: {place_name}")
+            print(f"📞 Phone: {phone}")
+            print(f"👥 Party size: {people}")
+            print(f"📅 Date: {date}")
+            print(f"🕐 Time: {time}")
+            if special_requests:
+                print(f"📝 Special requests: {special_requests}")
+
+            print(f"\n📞 Agent will now call the restaurant to make your reservation...")
+            logger.info("Reservation details ready for phone call")
+        else:
+            print(f"\n⚠️  Could not find phone number for {place_name}")
+            print("Please provide the phone number manually or proceed to summary.")
+            state["current_step"] = "summarize"
+
     except Exception as e:
-        logger.error(f"Error processing reservation: {e}")
-        print(f"Error processing reservation: {e}")
-        
-        # Try a simple fallback method if an exception occurs
-        try:
-            # Simple extraction logic based on common patterns in reservation requests
-            if "reservation" in needs_reservation and "at " in needs_reservation:
-                # Extract place name (after "at " but before " for ")
-                parts = needs_reservation.split("at ")
-                if len(parts) > 1:
-                    place_parts = parts[1].split(" for ")
-                    place_name = place_parts[0].strip()
-                    
-                    # Try to extract time and people
-                    time = ""
-                    people = ""
-                    date = "today"
-                    
-                    if "tonight" in needs_reservation:
-                        date = "tonight"
-                    
-                    # Look for time pattern (e.g., 8:30 pm)
-                    import re
-                    time_match = re.search(r'\d{1,2}(?::\d{2})?\s*(?:am|pm)', needs_reservation, re.IGNORECASE)
-                    if time_match:
-                        time = time_match.group()
-                    
-                    # Look for number of people
-                    people_match = re.search(r'for\s+(\d+)\s+people', needs_reservation, re.IGNORECASE)
-                    if people_match:
-                        people = people_match.group(1)
-                    
-                    # Get location details
-                    location_details = lookup_organization(place_name)
-                    
-                    # Create summary
-                    reservation_summary = {
-                        "reservation_type": "restaurant",
-                        "location_name": place_name,
-                        "location_details": location_details,
-                        "time": time,
-                        "date": date,
-                        "people": people,
-                        "special_requests": ""
-                    }
-                    
-                    # Format text
-                    reservation_text = f"I'd like to make a reservation at {place_name} for {time} on {date} for {people} people."
-                    
-                    # Add organization details
-                    if location_details:
-                        if location_details.get("phone"):
-                            reservation_text += f" The phone number is {location_details['phone']}."
-                        if location_details.get("address"):
-                            reservation_text += f" The address is {location_details['address']}."
-                        if location_details.get("hours"):
-                            reservation_text += f" They're open {location_details['hours']}."
-                    
-                    # Store in state
-                    state["reservation_summary"] = reservation_summary
-                    state["reservation_text"] = reservation_text
-                    
-                    print("✅ Successfully processed reservation request using fallback method")
-                    print(f"📍 Location: {place_name}")
-                    print(f"🕒 Time: {time}")
-                    print(f"📅 Date: {date}")
-                    print(f"👥 People: {people}")
-                    
-                    logger.info(f"Used fallback method to extract reservation details: {reservation_summary}")
-                    return state
-        except Exception as fallback_error:
-            logger.error(f"Fallback extraction also failed: {fallback_error}")
-    
-    # Continue to summary if all reservation processing fails
-    state["current_step"] = "summarize"
+        logger.error(f"Error collecting reservation details: {e}")
+        print(f"❌ Error: {e}")
+        state["current_step"] = "summarize"
+
     return state
 
 def summarize_node(state: AgentState) -> AgentState:
@@ -602,16 +419,7 @@ def summarize_node(state: AgentState) -> AgentState:
                 "attendee_names": event.get("attendees", [])[:5]  # Show up to 5 attendees
             } for event in today_events],
             "email_subjects": [{"subject": email["subject"], "sender": email["sender"]} for email in state["emails"][:10]],  # Limit to first 10
-            
-            # Include Zoom information if available
-            "total_zoom_meetings": state["summary"].get("total_zoom_meetings", 0) if "summary" in state and "total_zoom_meetings" in state["summary"] else 0,
-            "zoom_meetings": state["summary"].get("zoom_meetings", []) if "summary" in state and "zoom_meetings" in state["summary"] else [],
-            "zoom_user": state["summary"].get("zoom_user", {}) if "summary" in state and "zoom_user" in state["summary"] else {},
-            
-            # Include Slack information if available (placeholder as it's not implemented yet)
-            "slack_messages": state.get("slack_messages", []),
-            "total_slack_messages": len(state.get("slack_messages", [])),
-            "slack_unread_count": state.get("slack_unread_count", 0)
+            "important_emails": state.get("important_emails", []),  # Include AI-analyzed important emails
         }
         
         # Log the summary
@@ -637,20 +445,18 @@ def create_agent_graph() -> StateGraph:
     
     # Add only the necessary nodes
     workflow.add_node("fetch_emails", fetch_emails_node)
+    workflow.add_node("analyze_emails", analyze_emails_node)
     workflow.add_node("fetch_calendar", fetch_calendar_node)
-    workflow.add_node("check_zoom", check_zoom_node)
-    workflow.add_node("check_slack", check_slack_node)
     workflow.add_node("make_reservation", make_reservation_node)
     workflow.add_node("summarize", summarize_node)
-    
+
     # Set entry point
     workflow.set_entry_point("fetch_emails")
 
-    # Simplified flow: fetch emails -> fetch calendar -> check_zoom -> check_slack -> make_reservation
-    workflow.add_edge("fetch_emails", "fetch_calendar")
-    workflow.add_edge("fetch_calendar", "check_zoom")
-    workflow.add_edge("check_zoom", "check_slack")
-    workflow.add_edge("check_slack", "make_reservation")
+    # Updated flow: fetch emails -> analyze emails -> fetch calendar -> make_reservation -> summarize/call user
+    workflow.add_edge("fetch_emails", "analyze_emails")
+    workflow.add_edge("analyze_emails", "fetch_calendar")
+    workflow.add_edge("fetch_calendar", "make_reservation")
     
     # Add conditional routing based on whether we have a reservation
     workflow.add_conditional_edges(
@@ -688,5 +494,6 @@ def initialize_agent_state() -> AgentState:
             "email_subjects": []
         },
         reservation_summary={},
-        reservation_text=""
+        reservation_text="",
+        phone_number_to_call=""
     )

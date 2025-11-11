@@ -48,7 +48,7 @@ def format_summary_for_api(summary):
     # 1. GREETING & INTRODUCTION
     current_time = datetime.now()
     time_of_day = "morning" if current_time.hour < 12 else "afternoon" if current_time.hour < 18 else "evening"
-    sections.append(f"Good {time_of_day}. I'm your personal assistant with updates on your emails and schedule.")
+    sections.append(f"Good {time_of_day}. It's Donna here, I'll give you an overview of the emails you have received in the past 24 hours and the events scheduled for today.")
     
     # 2. CALENDAR SECTION - Start with most urgent/relevant info
     calendar_count = summary.get("total_calendar_events", 0)
@@ -82,105 +82,52 @@ def format_summary_for_api(summary):
     
     sections.append("SCHEDULE SUMMARY:\n" + "\n".join(calendar_text))
     
-    # 3. EMAIL SECTION - Focus on important/priority emails
+    # 3. EMAIL SECTION - Focus on AI-analyzed important emails
     email_count = summary.get("total_emails", 0)
-    important_emails = summary.get("important_emails", [])
+    important_emails = summary.get("important_emails", [])  # Top 5 from AI analysis
     recent_emails = summary.get("email_subjects", [])
-    
+
     # Email summary paragraph
     email_text = []
     if email_count > 0:
         email_text.append(f"You have {email_count} {'email' if email_count == 1 else 'emails'} in your inbox.")
-        
+
         if important_emails:
-            email_text.append(f"{len(important_emails)} {'email requires' if len(important_emails) == 1 else 'emails require'} your attention:")
-            for email in important_emails:  
+            # Use AI-analyzed important emails
+            email_text.append(f"\nTop {len(important_emails)} priority emails requiring your attention:")
+            for idx, email in enumerate(important_emails[:5], 1):
                 subject = email.get("subject", "No subject")
                 sender = email.get("sender", "Unknown sender")
-                email_text.append(f"• From {sender}: \"{subject}\"")
-        
-        if recent_emails and not important_emails:
+                urgency = email.get("urgency", "medium")
+                importance = email.get("importance_score", 5)
+
+                # Format email entry with urgency indicator
+                urgency_indicator = "🔴" if urgency == "critical" else "🟠" if urgency == "high" else "🟡" if urgency == "medium" else "🟢"
+                email_text.append(f"{urgency_indicator} {idx}. From {sender}: \"{subject}\" (Priority: {importance}/10)")
+
+                # Add AI summary if available
+                ai_summary = email.get("summary", "")
+                if ai_summary and ai_summary != subject:
+                    email_text.append(f"   Summary: {ai_summary}")
+
+                # Add suggested action if available
+                suggested_action = email.get("suggested_action", "")
+                if suggested_action:
+                    email_text.append(f"   Action needed: {suggested_action}")
+
+        elif recent_emails:
+            # Fallback to recent emails if no AI analysis
             email_text.append("Recent emails include:")
-            for email in recent_emails[:3]:  # Show only 3 most recent if no important emails
+            for email in recent_emails[:3]:
                 subject = email.get("subject", "No subject")
                 sender = email.get("sender", "Unknown sender")
                 email_text.append(f"• From {sender}: \"{subject}\"")
     else:
         email_text.append("You have no new emails.")
-    
+
     sections.append("EMAIL SUMMARY:\n" + "\n".join(email_text))
-    
-    # 4. ZOOM MEETINGS SECTION
-    zoom_meetings = summary.get("zoom_meetings", [])
-    total_zoom_meetings = summary.get("total_zoom_meetings", 0)
-    zoom_user = summary.get("zoom_user", {})
-    
-    zoom_text = []
-    if total_zoom_meetings > 0:
-        zoom_text.append(f"You have {total_zoom_meetings} upcoming Zoom {'meeting' if total_zoom_meetings == 1 else 'meetings'}.")
-        
-        # Display up to 3 upcoming meetings
-        for meeting in zoom_meetings[:3]:
-            topic = meeting.get("topic", "Untitled Meeting")
-            start_time = meeting.get("start_time", "No time specified")
-            duration = meeting.get("duration", 0)
-            
-            # Format the start time if it's a string in ISO format
-            if isinstance(start_time, str) and 'T' in start_time:
-                try:
-                    dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
-                    start_time = dt.strftime("%I:%M %p on %b %d")
-                except:
-                    # Keep as is if parsing fails
-                    pass
-                    
-            meeting_details = f"'{topic}' at {start_time}"
-            if duration:
-                meeting_details += f" ({duration} minutes)"
-                
-            zoom_text.append(f"• {meeting_details}")
-    else:
-        zoom_text.append("You have no upcoming Zoom meetings.")
-        
-    if zoom_user:
-        user_name = zoom_user.get("name", "")
-        if user_name:
-            zoom_text.append(f"You are logged in as {user_name}.")
-    
-    sections.append("ZOOM SUMMARY:\n" + "\n".join(zoom_text))
-    
-    # 5. SLACK SECTION
-    slack_messages = summary.get("slack_messages", [])
-    total_slack_messages = summary.get("total_slack_messages", 0)
-    slack_unread_count = summary.get("slack_unread_count", 0)
-    
-    slack_text = []
-    if total_slack_messages > 0:
-        slack_text.append(f"You have {total_slack_messages} Slack {'message' if total_slack_messages == 1 else 'messages'}, with {slack_unread_count} unread.")
-        
-        # Display up to 3 slack messages if available
-        for i, message in enumerate(slack_messages[:3]):
-            channel = message.get("channel", "Unknown channel")
-            sender = message.get("sender", "Unknown sender")
-            text_preview = message.get("text", "")[:50]  # Limit preview to 50 chars
-            if text_preview and len(message.get("text", "")) > 50:
-                text_preview += "..."
-                
-            slack_text.append(f"• {sender} in #{channel}: \"{text_preview}\"")
-    else:
-        slack_text.append("You have no new Slack messages.")
-    
-    sections.append("SLACK SUMMARY:\n" + "\n".join(slack_text))
-    
-    # 6. CONFLICTS & ACTION ITEMS
-    conflicts = summary.get("conflicts", [])
-    if conflicts:
-        conflict_text = ["ATTENTION NEEDED:"]
-        for conflict in conflicts:
-            conflict_text.append(f"• {conflict.get('description', 'Schedule conflict')}")
-        sections.append("\n".join(conflict_text))
-    
-    # Join all sections with double line breaks for readability
+
+    # Return the formatted summary
     return "\n\n".join(sections)
 
 async def call_room_token_api(call_context, unique_code="user123", bot_name="AI Assistant", name="User", call_id=None, callee_number=None, meeting_id=None, meeting_password=None):
@@ -294,13 +241,11 @@ async def main():
         print("\n" + formatted_summary)
         
         # Print the summary
-        print("\n✅ Processing completed!")
-        print("\n📋 SUMMARY")
-        print(f"  📧 Total Emails: {summary.get('total_emails', 0)}")
-        print(f"  📅 Total Calendar Events: {summary.get('total_calendar_events', 0)}")
-        print(f"  📆 Today's Events: {summary.get('today_events', 0)}")
-        print(f"  🔵 Zoom Meetings: {summary.get('total_zoom_meetings', 0)}")
-        print(f"  💬 Slack Messages: {summary.get('total_slack_messages', 0)} (Unread: {summary.get('slack_unread_count', 0)})")
+        print("\nProcessing completed!")
+        print("\nSUMMARY")
+        print(f"  Total Emails: {summary.get('total_emails', 0)}")
+        print(f"  Total Calendar Events: {summary.get('total_calendar_events', 0)}")
+        print(f"  Today's Events: {summary.get('today_events', 0)}")
         
         # Print today's events
         if summary.get('today_events', 0) > 0:
@@ -315,45 +260,6 @@ async def main():
             print("\n📧 RECENT EMAILS:")
             for idx, email in enumerate(summary.get('email_subjects', []), 1):
                 print(f"  {idx}. {email['subject']} (from: {email['sender']})")
-        
-        # Print Zoom meetings
-        if summary.get('total_zoom_meetings', 0) > 0:
-            print("\n🔵 UPCOMING ZOOM MEETINGS:")
-            for idx, meeting in enumerate(summary.get('zoom_meetings', [])[:3], 1):
-                topic = meeting.get("topic", "Untitled Meeting")
-                start_time = meeting.get("start_time", "No time specified")
-                duration = meeting.get("duration", 0)
-                
-                # Format the start time if it's a string in ISO format
-                if isinstance(start_time, str) and 'T' in start_time:
-                    try:
-                        dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
-                        start_time = dt.strftime("%I:%M %p on %b %d")
-                    except:
-                        # Keep as is if parsing fails
-                        pass
-                
-                print(f"  {idx}. {topic}")
-                print(f"     Time: {start_time}")
-                if duration:
-                    print(f"     Duration: {duration} minutes")
-                print(f"     Join URL: {meeting.get('join_url', 'No join URL')}")
-        
-        # Print Slack messages
-        if summary.get('total_slack_messages', 0) > 0:
-            print("\n💬 RECENT SLACK MESSAGES:")
-            for idx, message in enumerate(summary.get('slack_messages', [])[:3], 1):
-                sender = message.get("sender", "Unknown sender")
-                channel = message.get("channel", "Unknown channel")
-                text = message.get("text", "No content")
-                
-                # Truncate long messages
-                if len(text) > 50:
-                    text = text[:50] + "..."
-                    
-                print(f"  {idx}. From {sender} in #{channel}")
-                print(f"     \"{text}\"")
-                print(f"     Time: {message.get('timestamp', 'Unknown time')}")
         
         # Check if there's a reservation text in the state
         reservation_text = agent.state.get("reservation_text", "")
@@ -385,10 +291,10 @@ async def main():
             # Call API with reservation text as context
             response = await call_room_token_api(
                 call_context=reservation_text,  # Using reservation text
-                unique_code=os.getenv("UNIQUE_CODE", "parva123"),
+                unique_code=os.getenv("UNIQUE_CODE", "swayam123"),
                 bot_name=os.getenv("BOT_NAME", "Donna"),
-                name=os.getenv("USER_NAME", "Parva"),
-                callee_number="+16027406693",
+                name=os.getenv("USER_NAME", "Swayam"),
+                callee_number="+16025963147",
                 call_id=0
             )
         else:
@@ -398,21 +304,21 @@ async def main():
             # Using our fully detailed summary with proper JSON escaping
             response = await call_room_token_api(
                 call_context=formatted_summary,  # Using the original detailed summary
-                unique_code=os.getenv("UNIQUE_CODE", "parva123"),
+                unique_code=os.getenv("UNIQUE_CODE", "swayam123"),
                 bot_name=os.getenv("BOT_NAME", "Donna"),
-                name=os.getenv("USER_NAME", "Parva"),
-                callee_number="+16027406693",
+                name=os.getenv("USER_NAME", "Swayam"),
+                callee_number="+16025963147",
                 call_id=0
             )
         
-        print(f"📞 API Response: {response}")
+        print(f"API Response: {response}")
         
         print("\nThe web dashboard will remain available for viewing details.")
         
     except KeyboardInterrupt:
-        print("\n🛑 Shutdown requested...")
+        print("\nShutdown requested...")
         await agent.stop()
-        print("✅ Agent stopped successfully")
+        print("Agent stopped successfully")
 
 
 if __name__ == "__main__":

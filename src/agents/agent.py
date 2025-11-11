@@ -2,6 +2,7 @@ from __future__ import annotations
 import requests
 from pydantic import BaseModel
 import os
+import sys
 import logging
 from dotenv import load_dotenv
 import json
@@ -11,13 +12,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 import uuid
 from dataclasses import asdict
+
+# Add parent directory to path so we can import src modules
+current_dir = Path(__file__).resolve().parent
+project_root = current_dir.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
 from livekit import api
 from livekit.agents import cli, WorkerOptions, WorkerType, AutoSubscribe, JobContext, metrics, JobProcess
 from livekit.agents.metrics import AgentMetrics, UsageCollector
-# from livekit.agents.multimodal import MultimodalAgent
-# from livekit.agents.pipeline import VoicePipelineAgent
-from livekit.plugins import silero, turn_detector, openai, noise_cancellation
-from livekit.plugins.openai.realtime import RealtimeModel
+from livekit.plugins import silero, turn_detector, groq, noise_cancellation
 from livekit.agents import ChatContext, ChatMessage, StopResponse
 from livekit.agents import (
     Agent,
@@ -33,19 +38,17 @@ from livekit.agents import (
     llm
 )
 
-from functions import fetch_emails
+from src.agents.functions import fetch_emails, draft_reply, draft_new_email, create_calendar_event, view_calendar
 from livekit.agents import metrics, MetricsCollectedEvent
 
-from openai.types.beta.realtime.session import TurnDetection, InputAudioNoiseReduction
 from livekit.agents.llm import function_tool
 from livekit.agents.voice import MetricsCollectedEvent
-from livekit.plugins import openai, silero
+from livekit.plugins import groq, silero, cartesia
 
 # local import
-from mylogger import logging#, init_logger
-from room_management import delete_lk_room
-# from rag_utils import rag_setup, register_rag_func
-from custom_agent import MyAgent
+from src.utils.mylogger import logging
+from src.telephony.room_management import delete_lk_room
+from src.agents.custom_agent import MyAgent
 load_dotenv()
 
 
@@ -55,18 +58,32 @@ def prewarm_process(proc: JobProcess):
 # Entrypoint for agent worker
 async def entrypoint(ctx: JobContext):
     """Entry point for the agent."""
-    logging.info("Inside Entry Point Function")
-    logging.info(f"Room Name: Agent Creation -> {ctx.room.name}")
-    # USER_ID = ctx.room.name
+    print("\n" + "="*60)
+    print("AGENT ENTRYPOINT CALLED")
+    print("="*60)
+    print(f"Room Name: {ctx.room.name}")
+    print(f"Agent Name: {ctx.job.agent_name}")
+    print(f"Participants in room: {len(ctx.room.remote_participants)}")
+    
+    logging.info("=== AGENT ENTRYPOINT CALLED ===")
+    logging.info(f"Room Name: {ctx.room.name}")
+    logging.info(f"Agent Name: {ctx.job.agent_name}")
+    logging.info(f"Participants in room: {len(ctx.room.remote_participants)}")
 
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)  
+    print("Connected to LiveKit room")
+    logging.info("Connected to LiveKit room")
 
     metadata= json.loads(ctx.job.metadata)
     if ctx.room is None:
-        logging.info("ERROR: ctx.room is None. The agent cannot start.")
+        print("ERROR: ctx.room is None. The agent cannot start.")
+        logging.error("ERROR: ctx.room is None. The agent cannot start.")
+        return
 
-    logging.info(f"CTX.Agent.Name: {ctx.job.agent_name}")
-    logging.info(f"Agent Creation: Metadata obtained =  {metadata}")
+    print(f"Metadata keys: {list(metadata.keys())}")
+    print("STARTING AGENT SETUP...")
+    logging.info(f"Metadata: {metadata}")
+    logging.info("=== STARTING AGENT SETUP ===")
 
     user_instructions = metadata.get("instructions")
     unique_code = metadata.get("project_id")
@@ -85,7 +102,7 @@ async def entrypoint(ctx: JobContext):
 #####################TOOLS######################
     ###############Prebuilt Tools##########
 
-    async def mute_unmute(context: RunContext):
+    async def mute_unmute():
         """
             Called when user asks you to mute or unmute yourself or wants you not to speak until the users says so.
             Toggle microphone mute status in Zoom meetings. Use this when:
@@ -99,7 +116,7 @@ async def entrypoint(ctx: JobContext):
 
         return "ok"
     
-    async def voicemail(context: RunContext):
+    async def voicemail():
         """
             Called when you are informed that the call is being forwarded to voicemail
             Hang up call if it is being forwarded to vaoicemail.
@@ -107,15 +124,36 @@ async def entrypoint(ctx: JobContext):
         logging.info(f"Called end_call due to voicemail")
         room_name = ctx.room.name
         logging.info(f"Ending call by deleting room {room_name}")
-        
+
         try:
             await delete_lk_room(room_name)
             logging.info(f"Successfully deleted room {room_name}")
-            return None, "Call ended successfully."
-            
+            return "Call ended successfully."
+
         except Exception as e:
             logging.error(f"Error ending call: {e}")
-            return None, f"Failed to end call: {e}"        
+            return f"Failed to end call: {e}"
+
+    async def end_call():
+        """
+            Called when the user wants to end the conversation.
+            Use this when user says goodbye, thanks, that's all, or indicates they're done.
+        """
+        logging.info(f"User requested to end call")
+        room_name = ctx.room.name
+        logging.info(f"Ending call by deleting room {room_name}")
+
+        try:
+            await delete_lk_room(room_name)
+            logging.info(f"Successfully deleted room {room_name}")
+            return "Goodbye! Have a great day."
+
+        except Exception as e:
+            logging.error(f"Error ending call: {e}")
+            return f"Goodbye! Failed to end call: {e}"
+
+    # Initialize tools list FIRST
+    tools=[]
 
     if outbound_details.get("outbound_number") is not None:
         ob_call_id=outbound_details.get("outbound_call_id")
@@ -123,38 +161,67 @@ async def entrypoint(ctx: JobContext):
         ob_name= outbound_details.get("outbound_name")
         ob_call_context= outbound_details.get("outbound_call_context")
 
-        tool= function_tool(
+        # Add voicemail tool
+        voicemail_tool = function_tool(
             voicemail,
-            name= "voicemail",
-            description= """
-                Called when you are informed that the call is being forwarded to voicemail
-                Hang up call if it is being forwarded to vaoicemail.
-            """
+            name="voicemail",
+            description="Called when you are informed that the call is being forwarded to voicemail. Hang up the call."
         )
+        tools.append(voicemail_tool)
 
-        tool= function_tool(
+        # Add fetch_emails tool
+        fetch_emails_tool = function_tool(
             fetch_emails,
-            name= "fetch_emails",
-            description= """
-                Called when users asks anything regarding emails..
-            """
+            name="fetch_emails",
+            description="Fetch and display email details when user asks about specific emails. Use ONLY when user explicitly asks for email details or content."
         )
+        tools.append(fetch_emails_tool)
+        
+        # Add draft_reply tool
+        draft_reply_tool = function_tool(
+            draft_reply,
+            name="draft_reply",
+            description="Create a draft reply to an existing email. Use when user asks to reply to or respond to an email. The email_identifier can be the sender's email address (e.g., 'john@example.com'), sender's name (e.g., 'John Smith'), or the email ID. The function will automatically find the matching email."
+        )
+        tools.append(draft_reply_tool)
+        
+        # Add draft_new_email tool
+        draft_new_email_tool = function_tool(
+            draft_new_email,
+            name="draft_new_email",
+            description="Create a new draft email. Use when user asks to compose, write, or draft a new email to someone. Requires recipient email (to), subject, and body content."
+        )
+        tools.append(draft_new_email_tool)
+        
+        # Add create_calendar_event tool
+        create_calendar_event_tool = function_tool(
+            create_calendar_event,
+            name="create_calendar_event",
+            description="Create a new calendar event. Use when user wants to schedule a meeting, appointment, reminder, or any calendar event. Supports natural language time parsing like 'tomorrow at 2pm' or 'next Monday 10am'."
+        )
+        tools.append(create_calendar_event_tool)
+        
+        # Add view_calendar tool
+        view_calendar_tool = function_tool(
+            view_calendar,
+            name="view_calendar",
+            description="View upcoming calendar events. Use when user asks about their schedule, upcoming meetings, or what's on their calendar."
+        )
+        tools.append(view_calendar_tool)
+
+        # Add end_call tool
+        end_call_tool = function_tool(
+            end_call,
+            name="end_call",
+            description="End the conversation when user says goodbye, thanks, that's all I need, or indicates they want to end the call."
+        )
+        tools.append(end_call_tool)
 
         logging.info("############### Outbound Details ###############")
         logging.info(f"ob_callee_number {ob_callee_number}")
         logging.info(f"ob_name {ob_name}")
         logging.info(f"ob_call_context {ob_call_context}")
         logging.info(f"###############################################")
-
-    tools=[]
-
-
-    # tool=function_tool(
-    #     check_delivery,
-    #     name= function.get("function_name"),
-    #     description=function.get("callable_description"),
-    # )
-    # tools.append(tool)
 
     if outbound_details.get("meeting_id") is not None:
         tool= function_tool(
@@ -172,22 +239,24 @@ async def entrypoint(ctx: JobContext):
 
     session = AgentSession(
         vad=ctx.proc.userdata["vad"],
-        tts= openai.tts.TTS(
-            api_key= os.getenv("OPENAI_API_KEY"),
-            voice="coral",
-            instructions=f"Be a lot more expressive",
-            model= "gpt-4o-mini-tts"
+        stt=groq.STT(model="whisper-large-v3"),  # Add STT for speech recognition
+        tts=cartesia.TTS(
+            model="sonic-2-2025-03-07",  # Latest Cartesia model with speed control support
+            voice="79a125e8-cd45-4c13-8a67-188112f4dd22",  # British Lady (female voice)
+            speed=0.8,  # Slower speaking pace (0.8 = 80% speed)
+            api_version="2024-11-13",  # Required API version for speed control
         ),
-        llm=openai.realtime.RealtimeModel(
-            api_key=os.getenv("OPENAI_API_KEY"),
-            model= "gpt-4o-mini-realtime-preview",
-            voice= "coral",
+        llm=groq.LLM(
+            api_key=os.getenv("GROQ_API_KEY"),
+            model="llama-3.3-70b-versatile",  # Using Groq's fast LLM (3.3 is newest)
             temperature=temperature,
-            input_audio_noise_reduction= InputAudioNoiseReduction(type="far_field")  
         ),
-        # turn_detection=EnglishModel(),    
+        # turn_detection=EnglishModel(),
         )
 
+    # For outbound calls, agent should greet first
+    is_outbound = outbound_details.get("outbound_number") is not None
+    
     agent = MyAgent(user_instructions=user_instructions, tools=tools)
 
     usage_collector = metrics.UsageCollector()
@@ -210,7 +279,11 @@ async def entrypoint(ctx: JobContext):
         logging.info(f"Transcript saved to {filename}")
         return filename
 
+    print("Waiting for participant to join...")
+    logging.info("Waiting for participant to join...")
     await ctx.wait_for_participant()
+    print("Participant joined! Starting session...")
+    logging.info("Participant joined! Starting session...")
 
     start_time_utc = datetime.now(timezone.utc)
 
@@ -236,6 +309,10 @@ async def entrypoint(ctx: JobContext):
             task.cancel()
 
     ctx.add_shutdown_callback(log_usage)
+    
+    # Start the session - session.start() doesn't return a handle, it returns None
+    print("Starting agent session...")
+    logging.info("Starting agent session...")
     await session.start(
         agent=agent,
         room=ctx.room,
@@ -244,6 +321,22 @@ async def entrypoint(ctx: JobContext):
             noise_cancellation=noise_cancellation.BVC()
         ),       
     )
+    print("Agent session started successfully!")
+    logging.info("Agent session started successfully!")
+    
+    # For outbound calls, make agent speak first
+    if is_outbound:
+        print("This is an outbound call - agent will speak first")
+        logging.info("This is an outbound call - agent will speak first")
+        await session.say(
+            "Good morning! This is Donna, your personal assistant. I can help you check your emails, draft replies, schedule calendar events, and manage your day. What would you like to know?",
+            allow_interruptions=True
+        )
+        print("Agent spoke initial greeting")
+        logging.info("Agent spoke initial greeting")
+    else:
+        print("This is an inbound call - waiting for user to speak first")
+        logging.info("This is an inbound call - waiting for user to speak first")
 
 if __name__ == "__main__":
 

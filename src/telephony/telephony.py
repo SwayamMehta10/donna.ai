@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 import json
 import logging
 from twilio.rest import Client
-from mylogger import logging
+from src.utils.mylogger import logging
 from livekit import api
 from livekit.api import (LiveKitAPI,
                          RoomConfiguration,
@@ -178,20 +178,32 @@ async def create_livekit_inbound_trunk(twilio_number, unique_code, agent_name, m
 # Create twilio outubound setup
 ############################################################################################
 async def setup_twilio_outbound_call(twilio_number,twilio_sid, twilio_auth, unique_code, outbound_trunk_sid=None):
+    print(f"Starting setup_twilio_outbound_call for {unique_code}")
     try:
-
+        print("Creating Twilio client...")
         twilio_Client = Client(username=twilio_sid, password=twilio_auth)
+        print("Twilio client created successfully")
 
         trunk_name = f"{unique_code}_{twilio_number}_trunk"
+        print(f"Looking for existing trunk: {trunk_name}")
 
         existing_trunks = twilio_Client.trunking.v1.trunks.list()
+        print(f"Found {len(existing_trunks)} existing trunks")
         trunk = next((t for t in existing_trunks if t.friendly_name == trunk_name), None)
 
         if not trunk:
-            trunk = twilio_Client.trunking.v1.trunks.create(friendly_name=trunk_name)
-            logging.info(f"Twilio New SIP trunk -- Trunk SID = {trunk.sid}")
-            trunk_sid = trunk.sid
+            # For trial accounts, check if we can reuse any existing trunk
+            if len(existing_trunks) > 0:
+                print(f"Trial account detected - reusing existing trunk: {existing_trunks[0].friendly_name}")
+                trunk = existing_trunks[0]  # Use the first available trunk
+                trunk_sid = trunk.sid
+                logging.info(f"Reusing existing trunk for trial account -- Trunk SID = {trunk.sid}")
+            else:
+                trunk = twilio_Client.trunking.v1.trunks.create(friendly_name=trunk_name)
+                logging.info(f"Twilio New SIP trunk -- Trunk SID = {trunk.sid}")
+                trunk_sid = trunk.sid
         else:
+            print(f"Found matching trunk: {trunk.friendly_name}")
             trunk_sid = trunk.sid
 
         # Creating or reusing credential list
@@ -226,22 +238,18 @@ async def setup_twilio_outbound_call(twilio_number,twilio_sid, twilio_auth, uniq
      if acl.friendly_name == ip_acl_friendly_name), None
 )
 
-        # for acl in twilio_Client.sip.ip_access_control_lists.list():
-        #     if acl.friendly_name == ip_acl_friendly_name:
-        #         existing_ip_acl = acl
-        #         break
-
         if existing_ip_acl:
             logging.info(f"IP ACL with friendly name '{ip_acl_friendly_name}' already exists. Reusing.")
             ip_acl_sid = existing_ip_acl.sid
+            ip_acl_obj = existing_ip_acl  # Store the object for later use
         else:
-            ip_acl_name = twilio_Client.sip.ip_access_control_lists.create(friendly_name=ip_acl_friendly_name)
-            logging.info(f"Created new IP ACL -- SID = {ip_acl_name.sid}")
-            ip_acl_sid = ip_acl_name.sid
+            ip_acl_obj = twilio_Client.sip.ip_access_control_lists.create(friendly_name=ip_acl_friendly_name)
+            logging.info(f"Created new IP ACL -- SID = {ip_acl_obj.sid}")
+            ip_acl_sid = ip_acl_obj.sid
 
         # Add IP to ACL
         try:
-            ip_acl_added = twilio_Client.sip.ip_access_control_lists(ip_acl_name.sid).ip_addresses.create(friendly_name="allIPs",
+            ip_acl_added = twilio_Client.sip.ip_access_control_lists(ip_acl_sid).ip_addresses.create(friendly_name="allIPs",
                                                                                                         ip_address="0.0.0.0", #should be hosted ip
                                                                                                         cidr_prefix_length=1)
             logging.info(f"IP access control list added to the SIP : SID - {ip_acl_added.ip_access_control_list_sid}")
@@ -267,7 +275,12 @@ async def setup_twilio_outbound_call(twilio_number,twilio_sid, twilio_auth, uniq
         return ret
     
     except Exception as e:
-        logging.info(f"Exception Hit -- Function: setup_twilio_outbound_call -- Error: {e}")
+        print(f"EXCEPTION in setup_twilio_outbound_call: {e}")
+        print(f"Exception type: {type(e).__name__}")
+        import traceback
+        traceback.print_exc()
+        logging.error(f"Exception Hit -- Function: setup_twilio_outbound_call -- Error: {e}", exc_info=True)
+        return None  # Return None so caller can handle the error
 
 ############################################################################################
 # Create LiveKit outbound setup

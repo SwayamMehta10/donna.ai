@@ -1,10 +1,26 @@
-client_secret.json
-myenv
+# Environment and configuration
 .env
-credentials
-__pycache__
-logs
-venv
+
+# Python virtual environments
+myENV/
+
+# Python cache and compiled files
+__pycache__/
+
+# Credentials and sensitive files
+credentials/
+
+# Logs
+logs/
+
+# Temporary files
 temp/
-.venv/
+
+# IDE and editor files
+.vscode/
+.claude/
+
+# Project specific
 KMS/
+
+*.md

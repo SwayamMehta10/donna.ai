@@ -1,4 +1,6 @@
-
+# Core framework
+fastapi
+uvicorn
 pydantic
 
 # LangGraph and LangChain
@@ -7,65 +9,15 @@ langchain
 langchain-community
 langchain-core
 
-
-# HTTP and async
-aiohttp
-aiohttp-retry
-httpx
-requests
-
-# LLM clients (for free LLMs)
-ollama
-groq
-openai # For OpenAI-compatible APIs
-
-# Voice and communication
-twilio
-pydub
-SpeechRecognition
-pyttsx3
-# Utilities
-python-dotenv
-python-dateutil
-pytz
-typing-extensions
-
-# Development and testing
-pytest
-pytest-asyncio
-black
-flake8
-
-# Logging and monitoring
-structlog
-rich
-langgraph
-twilio
-python--dotenv
-livekit-api
+# LiveKit real-time communication
 livekit
-livekit-agents     
-livekit-plugins-turn-detector
-fastapi
-uvicorn
-livekit-plugins-openai
+livekit-api
+livekit-agents
+livekit-plugins-groq
 livekit-plugins-silero
-silero
+livekit-plugins-turn-detector
 livekit-plugins-noise-cancellation
-google-api-python-client
-google-auth-httplib2
-google-auth-oauthlib
-pytz
-# Core dependencies for AI Voice Agent
-fastapi
-uvicorn
-pydantic
-
-# LangGraph and LangChain
-langgraph
-langchain
-langchain-community
-langchain-core
+livekit-plugins-cartesia
 
 # Google API clients
 google-auth
@@ -74,28 +26,29 @@ google-auth-httplib2
 google-api-python-client
 googleapis-common-protos
 
-# HTTP and async
+# HTTP and async clients
 aiohttp
 aiohttp-retry
 httpx
 requests
 
-# LLM clients (for free LLMs)
-ollama
+# LLM providers
 groq
-openai  # For OpenAI-compatible APIs
+google-generativeai  # Gemini AI for email analysis
 
-# Voice and communication
+# Telephony
 twilio
-pydub
-SpeechRecognition
-pyttsx3
 
 # Utilities
 python-dotenv
 python-dateutil
+dateparser  # Natural language date/time parsing
 pytz
 typing-extensions
+bs4
+authlib  # For Google OAuth
+itsdangerous  # For session management
+jinja2  # For HTML templates
 
 # Development and testing
 pytest
@@ -106,5 +59,3 @@ flake8
 # Logging and monitoring
 structlog
 rich
-
-bs4

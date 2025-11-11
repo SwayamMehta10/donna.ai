@@ -19,14 +19,17 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Gmail API scopes
-SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
+# Gmail API scopes - readonly for fetching, compose for drafting
+SCOPES = [
+    'https://www.googleapis.com/auth/gmail.readonly',
+    'https://www.googleapis.com/auth/gmail.compose'
+]
 
 class GmailAPI:
     """Gmail API client for fetching emails"""
     
     def __init__(self, credentials_path: str = None, token_path: str = None):
-        self.credentials_path = credentials_path or os.getenv('GMAIL_CREDENTIALS_PATH', 'credentials/gmail_credentials.json')
+        self.credentials_path = credentials_path or os.getenv('GMAIL_CREDENTIALS_PATH', 'credentials/client_secret.json')
         self.token_path = token_path or os.getenv('GMAIL_TOKEN_PATH', 'credentials/gmail_token.json')
         self.service = None
         self._authenticate()
@@ -170,6 +173,122 @@ class GmailAPI:
                 body = base64.urlsafe_b64decode(payload['body']['data']).decode('utf-8')
         
         return body.strip() if body else "No content"
+    
+    def create_draft_reply(self, email_id: str, reply_body: str) -> Optional[str]:
+        """
+        Create a draft reply to an existing email
+        
+        Args:
+            email_id: ID of the email to reply to
+            reply_body: Content of the reply
+            
+        Returns:
+            Draft ID if successful, None otherwise
+        """
+        try:
+            # Get original email to extract headers
+            original = self.service.users().messages().get(
+                userId='me',
+                id=email_id,
+                format='full'
+            ).execute()
+            
+            headers = original['payload'].get('headers', [])
+            to = next((h['value'] for h in headers if h['name'] == 'From'), None)
+            subject = next((h['value'] for h in headers if h['name'] == 'Subject'), '')
+            message_id = next((h['value'] for h in headers if h['name'] == 'Message-ID'), None)
+            references = next((h['value'] for h in headers if h['name'] == 'References'), '')
+            
+            if not to:
+                logger.error("Cannot reply: original email has no sender")
+                return None
+            
+            # Add "Re: " to subject if not already present
+            if not subject.startswith('Re: '):
+                subject = f"Re: {subject}"
+            
+            # Build reply message
+            message = email.message.EmailMessage()
+            message['To'] = to
+            message['Subject'] = subject
+            message.set_content(reply_body)
+            
+            # Add threading headers for proper reply chain
+            if message_id:
+                message['In-Reply-To'] = message_id
+                if references:
+                    message['References'] = f"{references} {message_id}"
+                else:
+                    message['References'] = message_id
+            
+            # Create draft
+            draft_body = {
+                'message': {
+                    'raw': base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8'),
+                    'threadId': original.get('threadId')
+                }
+            }
+            
+            draft = self.service.users().drafts().create(
+                userId='me',
+                body=draft_body
+            ).execute()
+            
+            draft_id = draft['id']
+            logger.info(f"Created draft reply {draft_id} to email {email_id}")
+            return draft_id
+            
+        except HttpError as error:
+            logger.error(f"Gmail API error creating draft reply: {error}")
+            return None
+        except Exception as e:
+            logger.error(f"Error creating draft reply: {e}")
+            return None
+    
+    def create_draft_email(self, to: str, subject: str, body: str, cc: str = None) -> Optional[str]:
+        """
+        Create a new draft email
+        
+        Args:
+            to: Recipient email address
+            subject: Email subject
+            body: Email content
+            cc: Optional CC recipients (comma-separated)
+            
+        Returns:
+            Draft ID if successful, None otherwise
+        """
+        try:
+            # Build message
+            message = email.message.EmailMessage()
+            message['To'] = to
+            message['Subject'] = subject
+            if cc:
+                message['Cc'] = cc
+            message.set_content(body)
+            
+            # Create draft
+            draft_body = {
+                'message': {
+                    'raw': base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
+                }
+            }
+            
+            draft = self.service.users().drafts().create(
+                userId='me',
+                body=draft_body
+            ).execute()
+            
+            draft_id = draft['id']
+            logger.info(f"Created draft email {draft_id} to {to}")
+            return draft_id
+            
+        except HttpError as error:
+            logger.error(f"Gmail API error creating draft: {error}")
+            return None
+        except Exception as e:
+            logger.error(f"Error creating draft: {e}")
+            return None
 
 # Test function
 def test_connection():
