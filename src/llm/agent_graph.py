@@ -417,27 +417,31 @@ def create_agent_graph() -> StateGraph:
     workflow.add_node("fetch_emails", fetch_emails_node)
     workflow.add_node("analyze_emails", analyze_emails_node)
     workflow.add_node("fetch_calendar", fetch_calendar_node)
-    workflow.add_node("make_reservation", make_reservation_node)
+    # workflow.add_node("make_reservation", make_reservation_node)
     workflow.add_node("summarize", summarize_node)
 
     # Set entry point
     workflow.set_entry_point("fetch_emails")
 
-    # Updated flow: fetch emails -> analyze emails -> fetch calendar -> make_reservation -> summarize/call user
+    # Updated flow: fetch emails -> analyze emails -> fetch calendar -> summarize
+    # The `make_reservation` node is temporarily commented out and removed from routing.
     workflow.add_edge("fetch_emails", "analyze_emails")
     workflow.add_edge("analyze_emails", "fetch_calendar")
-    workflow.add_edge("fetch_calendar", "make_reservation")
-    
-    # Add conditional routing based on whether we have a reservation
-    workflow.add_conditional_edges(
-        "make_reservation",
-        lambda state: "summarize" if not state.get("reservation_text") else END,
-        {
-            "summarize": "summarize",
-            END: END
-        }
-    )
-    
+
+    # Temporarily disabled 'make_reservation' routing (node preserved but not used):
+    # workflow.add_edge("fetch_calendar", "make_reservation")
+    # workflow.add_conditional_edges(
+    #     "make_reservation",
+    #     lambda state: "summarize" if not state.get("reservation_text") else END,
+    #     {
+    #         "summarize": "summarize",
+    #         END: END
+    #     }
+    # )
+
+    # Directly proceed to summarize while reservation node is disabled
+    workflow.add_edge("fetch_calendar", "summarize")
+
     workflow.add_edge("summarize", END)
     
     # Add memory for state persistence

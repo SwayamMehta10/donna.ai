@@ -64,13 +64,7 @@ Follow these steps to run the demo locally and test Donna (Windows / PowerShell)
 
 	- From the web UI click the `Call me now` button to trigger an outbound call.
 
-7. IMPORTANT: Context Feature server prompt
-
-	- In the **Context Feature** server terminal you will be prompted: `Do you want to make a reservation?`.
-	- Enter `no` and press Enter.
-	- This feature is incomplete and if you answer anything else the server may time out or block the call flow.
-
-8. Accept the incoming call and talk to Donna
+7. Accept the incoming call and talk to Donna
 
 	- Wait for the phone call and accept it.
 	- Try out different commands and features:
