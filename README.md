@@ -56,7 +56,7 @@ Follow these steps to run the demo locally and test Donna (Windows / PowerShell)
 
 5. Sign up using Google and enter your phone number
 
-	- Open a browser and go to the web UI (default): `http://localhost:8000`
+	- Open a browser and go to the web UI (default): `http://localhost:8020`
 	- Use the Google sign-in flow to register / sign in.
 	- After signing in, add your phone number in your profile.
 
