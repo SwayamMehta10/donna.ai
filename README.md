@@ -30,7 +30,17 @@ Follow these steps to run the demo locally and test Donna (Windows / PowerShell)
 	.\myENV\Scripts\Activate.ps1
 	```
 
-3. Install dependencies
+3. Create a `.env` file from the example and add credentials
+
+	- Copy the example environment file and update it with your personal credentials (Google OAuth client secrets, API keys, etc.). In PowerShell run:
+
+	```powershell
+	Copy-Item .env.example .env
+	# Then open .env in your editor and paste your personal credentials
+	notepad .env
+	```
+
+4. Install dependencies
 
 	```powershell
 	pip install -r requirements.txt
