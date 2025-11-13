@@ -24,3 +24,4 @@ temp/
 KMS/
 
 *.md
+!README.md

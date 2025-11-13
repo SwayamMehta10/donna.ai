@@ -20,62 +20,97 @@ class EmailData(TypedDict):
     suggested_action: Optional[str]
     summary: Optional[str]
 
-async def fetch_emails():
+async def fetch_emails(sender_name: Optional[str] = None, subject_keyword: Optional[str] = None):
     """
-    Fetch and display detailed email information when user explicitly requests it.
-    Use this ONLY when the user asks for specific email details or full content.
+    Fetch and display full email details when user asks about specific emails.
+    
+    Args:
+        sender_name: Name or email address of sender (e.g., "John Smith", "john@example.com")
+        subject_keyword: Keyword from email subject to search for
+    
+    Use this when user asks:
+    - "Tell me more about the email from [sender]"
+    - "What did [sender] say?"
+    - "Show me the email about [subject]"
+    - "Read the full email from [sender]"
     """
-    logging.info("Fetching emails from the last 24 hours...")
+    logging.info(f"Fetching email details - sender: {sender_name}, subject: {subject_keyword}")
     
     try:
-        # Use directly imported GmailAPI or import if needed
-        if GmailAPI is None:
-            from services.gmail import GmailAPI as Gmail
-        else:
-            Gmail = GmailAPI
+        gmail_api = GmailAPI()
         
-        gmail_api = Gmail()
-        
-        # Always fetch emails from last 24 hours, regardless of last_check
+        # Fetch recent emails
         since_24h = datetime.now() - timedelta(hours=24)
-        new_emails = gmail_api.fetch_recent_emails(since=since_24h)
+        recent_emails = gmail_api.fetch_recent_emails(since=since_24h, max_results=50)
         
-        # LOG FETCHED EMAILS FOR DEBUGGING
-        try:
-            from services.data_logger import log_fetched_emails
-            log_fetched_emails(new_emails)
-        except Exception as log_error:
-            logging.warning(f"Failed to log emails: {log_error}")
-        
-        if not new_emails:
+        if not recent_emails:
             return "No emails found in the last 24 hours."
         
-        # Format emails for response
-        email_summary = f"Found {len(new_emails)} emails:\n\n"
-        for i, email in enumerate(new_emails[:5], 1):  # Limit to first 5
-            email_summary += f"{i}. From: {email['sender']}\n"
-            email_summary += f"   Subject: {email['subject']}\n"
-            email_summary += f"   Preview: {email['body'][:100]}...\n\n"
+        # If no search criteria, return summary of recent emails
+        if not sender_name and not subject_keyword:
+            email_summary = f"Here are your recent emails:\n\n"
+            for i, email in enumerate(recent_emails[:5], 1):
+                email_summary += f"{i}. From: {email['sender']}\n"
+                email_summary += f"   Subject: {email['subject']}\n"
+                email_summary += f"   Preview: {email['body'][:100]}...\n\n"
+            
+            if len(recent_emails) > 5:
+                email_summary += f"\n...and {len(recent_emails) - 5} more emails."
+            
+            return email_summary
         
-        if len(new_emails) > 5:
-            email_summary += f"...and {len(new_emails) - 5} more emails."
+        # Search for matching email
+        matched_email = None
+        search_term = (sender_name or subject_keyword or "").lower()
         
-        return email_summary
+        for email in recent_emails:
+            sender = email['sender'].lower()
+            subject = email['subject'].lower()
+            
+            # Check if search term matches sender or subject
+            if sender_name and search_term in sender:
+                matched_email = email
+                break
+            elif subject_keyword and search_term in subject:
+                matched_email = email
+                break
+        
+        if not matched_email:
+            return f"I couldn't find an email matching '{search_term}' in your recent emails. Could you be more specific or check if you have emails from them?"
+        
+        # Get full email content (already in matched_email['body'])
+        full_body = matched_email.get('body', 'Email body not available')
+        timestamp = matched_email['timestamp'].strftime("%B %d at %I:%M %p")
+        
+        # Format full email in voice-friendly way
+        response = f"""
+Here's the full email from {matched_email['sender']}:
+
+Subject: {matched_email['subject']}
+Received: {timestamp}
+
+{full_body}
+
+Would you like to reply to this email?
+"""
+        
+        return response.strip()
         
     except Exception as e:
         logging.error(f"Error fetching emails: {e}")
-        return f"I encountered an error fetching your emails: {str(e)}"
+        return f"I encountered an error fetching email details: {str(e)}"
 
 
 async def draft_reply(email_identifier: str, reply_content: str):
     """
-    Create a draft reply to an existing email.
+    Create a draft reply to an existing email using Gemini AI for professional drafting.
     Use this when user asks to reply to an email or draft a response.
     
     Args:
         email_identifier: Either the email ID, sender's email address, or sender's name
                          Examples: "19a6b5831a3b8e73", "john@example.com", "John Smith"
-        reply_content: The content of the reply message
+        reply_content: User's casual description of what they want to communicate
+                      Example: "tell him I'll be there and bring the reports"
     
     Returns:
         Confirmation message with draft ID
@@ -83,6 +118,8 @@ async def draft_reply(email_identifier: str, reply_content: str):
     logging.info(f"Creating draft reply for email identifier: {email_identifier}")
     
     try:
+        from src.services.email_drafter import EmailDrafter
+        
         gmail_api = GmailAPI()
         
         # Check if it's already an email ID (starts with alphanumeric, no @ or spaces)
@@ -90,6 +127,9 @@ async def draft_reply(email_identifier: str, reply_content: str):
             # Likely an email ID, use directly
             email_id = email_identifier
             logging.info(f"Using provided email ID: {email_id}")
+            # Need to fetch email details for Gemini drafting
+            recent_emails = gmail_api.fetch_recent_emails(max_results=50)
+            matched_email = next((e for e in recent_emails if e['id'] == email_id), None)
         else:
             # It's a name or email address - search for matching email
             logging.info(f"Searching for email matching: {email_identifier}")
@@ -111,14 +151,21 @@ async def draft_reply(email_identifier: str, reply_content: str):
             if not email_id:
                 return f"I couldn't find a recent email from '{email_identifier}'. Could you be more specific or check if you have emails from them in the last 24 hours?"
         
-        # Create the draft reply
-        draft_id = gmail_api.create_draft_reply(email_id, reply_content)
+        if not matched_email:
+            return f"I found the email but couldn't retrieve its details. Please try again."
+        
+        # Use Gemini to draft professional reply
+        logging.info(f"Using Gemini AI to draft professional reply based on user intent: '{reply_content}'")
+        drafter = EmailDrafter()
+        professional_reply = drafter.draft_reply(matched_email, reply_content)
+        
+        logging.info(f"Gemini drafted reply (first 100 chars): {professional_reply[:100]}")
+        
+        # Create the draft reply with Gemini-generated content
+        draft_id = gmail_api.create_draft_reply(email_id, professional_reply)
         
         if draft_id:
-            if matched_email:
-                return f"I've created a draft reply to {matched_email['sender']} (Subject: {matched_email['subject']}). Draft ID: {draft_id}. You can review and send it from your Gmail drafts."
-            else:
-                return f"I've created a draft reply (ID: {draft_id}). You can review and send it from your Gmail drafts."
+            return f"I've created a professional draft reply to {matched_email['sender']} (Subject: {matched_email['subject']}). Draft ID: {draft_id}. You can review and send it from your Gmail drafts."
         else:
             return "I encountered an error creating the draft reply. Please try again."
             
@@ -129,13 +176,14 @@ async def draft_reply(email_identifier: str, reply_content: str):
 
 async def draft_new_email(to: str, subject: str, body: str, cc: str = None):
     """
-    Create a new draft email.
+    Create a new draft email using Gemini AI for professional drafting.
     Use this when user asks to compose a new email or draft a message to someone.
     
     Args:
-        to: Recipient email address
+        to: Recipient email address (must be valid format: name@domain.com)
         subject: Email subject line
-        body: Email content/message
+        body: User's casual description of what they want to communicate
+              Example: "ask him about the Q4 budget and if he needs anything"
         cc: Optional CC recipients (comma-separated email addresses)
     
     Returns:
@@ -144,11 +192,34 @@ async def draft_new_email(to: str, subject: str, body: str, cc: str = None):
     logging.info(f"Creating new draft email to {to}")
     
     try:
+        import re
+        from src.services.email_drafter import EmailDrafter
+        
+        # Validate email address format
+        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        
+        if not re.match(email_pattern, to):
+            return f"Invalid email address '{to}'. Please provide a valid email address in the format name@domain.com"
+        
+        # Validate CC if provided
+        if cc:
+            cc_emails = [email.strip() for email in cc.split(',')]
+            for email in cc_emails:
+                if not re.match(email_pattern, email):
+                    return f"Invalid CC email address '{email}'. Please use format name@domain.com"
+        
+        # Use Gemini to draft professional email body
+        logging.info(f"Using Gemini AI to draft professional email to {to}")
+        drafter = EmailDrafter()
+        professional_body = drafter.draft_new_email(to, subject, body)
+        
+        logging.info(f"Gemini drafted email (first 100 chars): {professional_body[:100]}")
+        
         gmail_api = GmailAPI()
-        draft_id = gmail_api.create_draft_email(to, subject, body, cc)
+        draft_id = gmail_api.create_draft_email(to, subject, professional_body, cc)
         
         if draft_id:
-            return f"I've created a draft email to {to} (ID: {draft_id}). You can review and send it from your Gmail drafts."
+            return f"I've created a professional draft email to {to} with subject '{subject}' (ID: {draft_id}). You can review and send it from your Gmail drafts."
         else:
             return "I encountered an error creating the draft. Please try again."
             
@@ -292,6 +363,13 @@ async def view_calendar(days_ahead: int = 7):
     Returns:
         Formatted list of upcoming events
     """
+    # Handle string to int conversion if needed
+    if isinstance(days_ahead, str):
+        try:
+            days_ahead = int(days_ahead)
+        except ValueError:
+            days_ahead = 7  # Default fallback
+    
     logging.info(f"Fetching calendar events for next {days_ahead} days")
     
     try:

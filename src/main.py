@@ -54,83 +54,37 @@ def format_summary_for_api(summary):
     """
     Format the email and calendar summary data for the API call_context parameter.
     Creates a structured conversational context for the calling agent.
+    
+    NEW APPROACH: No Gemini analysis, just list emails in batches of 5
     """
     sections = []
     
-    # 1. GREETING & INTRODUCTION
-    current_time = datetime.now()
-    time_of_day = "morning" if current_time.hour < 12 else "afternoon" if current_time.hour < 18 else "evening"
-    sections.append(f"Good {time_of_day}. It's Donna here, I'll give you an overview of the emails you have received in the past 24 hours and the events scheduled for today.")
+    # 1. GREETING - Ultra brief
+    sections.append("Donna here.")
     
-    # 2. CALENDAR SECTION
-    calendar_count = summary.get("total_calendar_events", 0)
+    # 2. CALENDAR - Ultra compact
     today_events = summary.get("today_events", 0)
-    upcoming_events = len(summary.get("upcoming_events", []))
     
     calendar_text = []
     if today_events > 0:
-        calendar_text.append(f"You have {today_events} {'event' if today_events == 1 else 'events'} scheduled today.")
+        calendar_text.append(f"{today_events} events today.")
         events_details = summary.get("today_events_details", [])
-        if events_details:
-            for event in events_details:
-                title = event.get("title", "Untitled")
-                time = event.get("time", "No time specified")
-                location = event.get("location", "No location specified")
-                attendees_count = event.get("attendees", "")
-                
-                event_details = f"'{title}' at {time}"
-                if location and location.lower() != "no location specified":
-                    event_details += f" in {location}"
-                if attendees_count and str(attendees_count).isdigit():
-                    event_details += f" with {attendees_count} {'person' if attendees_count == '1' else 'people'}"
-                
-                calendar_text.append(f"• {event_details}")
+        for event in events_details[:1]:  # Max 1 event
+            title = event.get("title", "Event")
+            time = event.get("time", "")
+            calendar_text.append(f"{title} at {time}")
     else:
-        calendar_text.append("You have no events scheduled for today.")
+        calendar_text.append("No events today.")
     
-    if upcoming_events > 0:
-        calendar_text.append(f"You also have {upcoming_events} upcoming {'event' if upcoming_events == 1 else 'events'} in the next few days.")
+    sections.append("\n".join(calendar_text))
     
-    sections.append("SCHEDULE SUMMARY:\n" + "\n".join(calendar_text))
-    
-    # 3. EMAIL SECTION
+    # 3. EMAIL SECTION - ONLY MENTION COUNT, NOT DETAILS (to reduce tokens)
     email_count = summary.get("total_emails", 0)
-    important_emails = summary.get("important_emails", [])
-    recent_emails = summary.get("email_subjects", [])
-
-    email_text = []
+    
     if email_count > 0:
-        email_text.append(f"You have {email_count} {'email' if email_count == 1 else 'emails'} in your inbox.")
-
-        if important_emails:
-            email_text.append(f"\nTop {len(important_emails)} priority emails requiring your attention:")
-            for idx, email in enumerate(important_emails[:5], 1):
-                subject = email.get("subject", "No subject")
-                sender = email.get("sender", "Unknown sender")
-                urgency = email.get("urgency", "medium")
-                importance = email.get("importance_score", 5)
-
-                urgency_indicator = "🔴" if urgency == "critical" else "🟠" if urgency == "high" else "🟡" if urgency == "medium" else "🟢"
-                email_text.append(f"{urgency_indicator} {idx}. From {sender}: \"{subject}\" (Priority: {importance}/10)")
-
-                ai_summary = email.get("summary", "")
-                if ai_summary and ai_summary != subject:
-                    email_text.append(f"   Summary: {ai_summary}")
-
-                suggested_action = email.get("suggested_action", "")
-                if suggested_action:
-                    email_text.append(f"   Action needed: {suggested_action}")
-
-        elif recent_emails:
-            email_text.append("Recent emails include:")
-            for email in recent_emails[:3]:
-                subject = email.get("subject", "No subject")
-                sender = email.get("sender", "Unknown sender")
-                email_text.append(f"• From {sender}: \"{subject}\"")
+        sections.append(f"{email_count} emails available.")
     else:
-        email_text.append("You have no new emails.")
-
-    sections.append("EMAIL SUMMARY:\n" + "\n".join(email_text))
+        sections.append("No emails.")
 
     return "\n\n".join(sections)
 

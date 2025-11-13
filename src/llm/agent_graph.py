@@ -104,8 +104,11 @@ def fetch_emails_node(state: AgentState) -> AgentState:
     return state
 
 def analyze_emails_node(state: AgentState) -> AgentState:
-    """Analyze emails using Gemini AI to identify important ones"""
-    logger.info("Analyzing emails with Gemini AI...")
+    """
+    SKIP Gemini AI analysis for speed - just pass through emails
+    Agent will read emails in batches of 5 during the call
+    """
+    logger.info("Skipping Gemini analysis - emails will be read in batches during call")
 
     try:
         emails = state.get("emails", [])
@@ -115,45 +118,12 @@ def analyze_emails_node(state: AgentState) -> AgentState:
             state["current_step"] = "fetch_calendar"
             return state
 
-        # Initialize email analyzer
-        try:
-            analyzer = EmailAnalyzer()
-
-            # Analyze emails
-            analysis_result = analyzer.analyze_emails(emails, max_emails=50)
-
-            # Update state with analyzed emails
-            state["emails"] = analysis_result.get("analyzed_emails", emails)
-
-            # Store important emails separately
-            state["important_emails"] = analysis_result.get("top_5_important", [])
-            state["email_analysis_summary"] = analysis_result.get("overall_summary", "")
-
-            # Log results
-            logger.info(f"Email analysis complete:")
-            logger.info(f"  - Total analyzed: {analysis_result.get('total_analyzed', 0)}")
-            logger.info(f"  - High priority: {analysis_result.get('high_priority_count', 0)}")
-            logger.info(f"  - Requires action: {analysis_result.get('requires_action_count', 0)}")
-
-            # Print top 5 for user
-            print("\nTOP 5 IMPORTANT EMAILS:")
-            for idx, email in enumerate(analysis_result.get("top_5_important", [])[:5], 1):
-                print(f"\n{idx}. {email.get('subject', 'No subject')}")
-                print(f"   From: {email.get('sender', 'Unknown')}")
-                print(f"   Importance: {email.get('importance_score', 0)}/10")
-                print(f"   Urgency: {email.get('urgency', 'unknown')}")
-                if email.get('suggested_action'):
-                    print(f"   📝 Action: {email.get('suggested_action')}")
-
-        except ImportError as e:
-            logger.warning(f"Gemini AI not available, skipping email analysis: {e}")
-            logger.info("Install with: pip install google-generativeai")
-        except ValueError as e:
-            logger.warning(f"Email analysis skipped: {e}")
-            logger.info("Set GEMINI_API_KEY in your .env file")
-        except Exception as e:
-            logger.error(f"Error during email analysis: {e}")
-
+        # NO GEMINI ANALYSIS - Just log count
+        logger.info(f"📧 {len(emails)} emails fetched (no AI analysis - will read in batches)")
+        
+        # Store emails as-is without analysis
+        # The call agent will read them in batches of 5
+        
         state["current_step"] = "fetch_calendar"
 
     except Exception as e:
